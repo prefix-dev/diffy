@@ -77,6 +77,14 @@ impl<T: AsRef<[u8]> + ToOwned + ?Sized> Patch<'_, T> {
     }
 }
 
+pub fn patches_from_str(input: &str) -> Result<Vec<Patch<'_, str>>, ParsePatchError> {
+    parse::parse_multiple(input)
+}
+
+pub fn patches_from_bytes(input: &[u8]) -> Result<Vec<Patch<'_, [u8]>>, ParsePatchError> {
+    parse::parse_bytes_multiple(input)
+}
+
 impl<'a> Patch<'a, str> {
     /// Parse a `Patch` from a string
     ///

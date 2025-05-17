@@ -50,6 +50,8 @@ pub enum ParsePatchError {
     InvalidEscapedCharacter,
     #[error("invalid unescaped character")]
     InvalidUnescapedCharacter,
+    #[error("no hunks found")]
+    NoHunks,
     #[error("hunks not in order or overlap")]
     HunksOrder,
     #[error("hunk header does not match hunk")]
@@ -95,6 +97,25 @@ impl<'a, T: Text + ?Sized> Parser<'a, T> {
     }
 }
 
+pub fn parse_multiple(input: &str) -> Result<Vec<Patch<'_, str>>> {
+    let mut parser = Parser::new(input);
+    let mut patches = vec![];
+    loop {
+        match (patch_header(&mut parser), hunks(&mut parser)) {
+            (Ok(header), Ok(hunks)) => patches.push(Patch::new(
+                header.0.map(convert_cow_to_str),
+                header.1.map(convert_cow_to_str),
+                hunks,
+            )),
+            (Ok((None, None)), Err(_)) | (Err(_), Err(_)) => break,
+            (Ok(_), Err(e)) | (Err(e), Ok(_)) => {
+                return Err(e);
+            }
+        }
+    }
+    Ok(patches)
+}
+
 pub fn parse(input: &str) -> Result<Patch<'_, str>> {
     let mut parser = Parser::new(input);
     let header = patch_header(&mut parser)?;
@@ -105,6 +126,21 @@ pub fn parse(input: &str) -> Result<Patch<'_, str>> {
         header.1.map(convert_cow_to_str),
         hunks,
     ))
+}
+
+pub fn parse_bytes_multiple(input: &[u8]) -> Result<Vec<Patch<'_, [u8]>>> {
+    let mut parser = Parser::new(input);
+    let mut patches = vec![];
+    loop {
+        match (patch_header(&mut parser), hunks(&mut parser)) {
+            (Ok(header), Ok(hunks)) => patches.push(Patch::new(header.0, header.1, hunks)),
+            (Ok((None, None)), Err(_)) | (Err(_), Err(_)) => break,
+            (Ok(_), Err(e)) | (Err(e), Ok(_)) => {
+                return Err(e);
+            }
+        }
+    }
+    Ok(patches)
 }
 
 pub fn parse_bytes(input: &[u8]) -> Result<Patch<'_, [u8]>> {
@@ -196,7 +232,8 @@ fn is_quoted<T: Text + ?Sized>(s: &T) -> Option<&T> {
 }
 
 fn unescaped_filename<T: Text + ToOwned + ?Sized>(filename: &T) -> Result<Cow<'_, [u8]>> {
-    let bytes = filename.as_bytes();
+    // NOTE: may be a problem for other types of line feed except "\n" and "\r\n".
+    let bytes = filename.as_bytes().trim_ascii_end();
 
     if bytes.iter().any(|b| ESCAPED_CHARS_BYTES.contains(b)) {
         return Err(ParsePatchError::InvalidCharInUnquotedFilename);
@@ -248,7 +285,20 @@ fn verify_hunks_in_order<T: ?Sized>(hunks: &[Hunk<'_, T>]) -> bool {
 fn hunks<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Vec<Hunk<'a, T>>> {
     let mut hunks = Vec::new();
     while parser.peek().is_some() {
-        hunks.push(hunk(parser)?);
+        let r = hunk(parser);
+
+        // TODO: Handle properly. For example there is case where hunk
+        // is partially parsed. I think we want to make it hard error
+        // instead or treating it as PS.
+        if let Ok(h) = r {
+            hunks.push(h);
+        } else {
+            break;
+        }
+    }
+
+    if hunks.is_empty() {
+        return Err(ParsePatchError::NoHunks);
     }
 
     // check and verify that the Hunks are in sorted order and don't overlap
@@ -318,7 +368,7 @@ fn hunk_lines<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Vec<Li
     let mut no_newline_insert = false;
 
     while let Some(line) = parser.peek() {
-        let line = if line.starts_with("@") {
+        let line = if line.starts_with("@") || line.starts_with("diff ") {
             break;
         } else if no_newline_context {
             return Err(ParsePatchError::ExpectedEndOfHunk);
@@ -375,6 +425,8 @@ fn strip_newline<T: Text + ?Sized>(s: &T) -> Result<&T> {
 
 #[cfg(test)]
 mod tests {
+    use crate::patch::patches_from_str;
+
     use super::{parse, parse_bytes};
 
     #[test]
@@ -508,5 +560,14 @@ mod tests {
 
 ";
         parse(s).unwrap();
+    }
+
+    #[test]
+    fn test_real_world_patches() {
+        insta::glob!("test-data/*.patch*", |path| {
+            let input = std::fs::read_to_string(path).unwrap();
+            let patches = patches_from_str(&input).unwrap();
+            insta::assert_debug_snapshot!(patches);
+        });
     }
 }
