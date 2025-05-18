@@ -328,7 +328,9 @@ pub fn tolerance_level<T: Text + ?Sized>(lines: &Vec<Line<'_, T>>) -> (usize, bo
 }
 
 fn hunk<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Hunk<'a, T>> {
-    let (range1, range2, function_context) = hunk_header(parser.next()?)?;
+    let n = *parser.peek().ok_or(ParsePatchError::UnexpectedEof)?;
+    let (range1, range2, function_context) = hunk_header(n)?;
+    let _ = parser.next();
     let lines = hunk_lines(parser)?;
 
     let t = tolerance_level(&lines);
@@ -393,6 +395,7 @@ fn hunk_lines<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Vec<Li
             || line.starts_with("diff ")
             || line.starts_with("-- ")
             || line.starts_with("--\n")
+            || line.starts_with("--- ")
         {
             break;
         } else if no_newline_context {
