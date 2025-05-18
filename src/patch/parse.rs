@@ -309,19 +309,30 @@ fn hunks<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Vec<Hunk<'a
     Ok(hunks)
 }
 
+// Hunk ranges tolerance levels based on the end lines.
+pub fn tolerance_level<T: Text + ?Sized>(lines: &Vec<Line<'_, T>>) -> (usize, bool) {
+    let mut tolerance = 0;
+    let mut revlines = lines.iter().rev();
+    while let Some(Line::Context(l)) = revlines.next() {
+        if l.as_bytes() == b"\n" || l.as_bytes() == b"\r\n" {
+            tolerance += 1;
+        } else {
+            break;
+        }
+    }
+
+    let line_ends_with_newline =
+        matches!(revlines.next(), Some(Line::Context(l)) if l.ends_with("\n"));
+
+    (tolerance, line_ends_with_newline)
+}
+
 fn hunk<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Hunk<'a, T>> {
     let (range1, range2, function_context) = hunk_header(parser.next()?)?;
     let lines = hunk_lines(parser)?;
 
-    // Increase tolerance for the last line. Needed for files like
-    let tolerance: usize = lines
-        .last()
-        .map(|l| match l {
-            Line::Context(t) => t.ends_with("\n"),
-            _ => false,
-        })
-        .unwrap_or_default()
-        .into();
+    let t = tolerance_level(&lines);
+    let tolerance = t.0 + usize::from(t.1);
 
     // check counts of lines to see if they match the ranges in the hunk header
     let (len1, len2) = super::hunk_lines_count(&lines);

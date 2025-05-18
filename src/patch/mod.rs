@@ -2,6 +2,7 @@ mod format;
 mod parse;
 
 pub use format::PatchFormatter;
+use parse::tolerance_level;
 pub use parse::ParsePatchError;
 
 use std::{borrow::Cow, fmt, ops};
@@ -268,24 +269,29 @@ impl<'a, T: Text + ?Sized> Hunk<'a, T> {
     ) -> Self {
         let (old_count, new_count) = hunk_lines_count(&lines);
 
-        // TODO: Move to separate function to remove repitition. Code was copied from parser module.
-        let tolerance: usize = lines
-            .last()
-            .map(|l| match l {
-                Line::Context(t) => t.ends_with("\n"),
-                _ => false,
-            })
-            .unwrap_or_default()
-            .into();
+        let (newlines_at_the_end, last_line_has_newline) = tolerance_level(&lines);
+        let tolerance = newlines_at_the_end + usize::from(last_line_has_newline);
 
-        assert!(old_count.abs_diff(old_range.len) <= tolerance);
-        assert!(new_count.abs_diff(new_range.len) <= tolerance);
+        let old_diff = old_count.abs_diff(old_range.len);
+        let new_diff = new_count.abs_diff(new_range.len);
+
+        assert!(old_diff <= tolerance);
+        assert!(new_diff <= tolerance);
+
+        // We want to omit newlines that are out of hunk to apply only
+        // expected amount of newlines.
+        let fit_hunk_offset = new_count.saturating_sub(new_range.len);
 
         Self {
             old_range,
             new_range,
             function_context,
-            lines,
+            lines: lines // We want skip empty lines that are out of hunk.
+                .into_iter()
+                .rev()
+                .skip(fit_hunk_offset)
+                .rev()
+                .collect(),
         }
     }
 
