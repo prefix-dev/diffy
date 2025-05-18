@@ -566,7 +566,7 @@ mod tests {
     fn test_real_world_patches() {
         insta::glob!("test-data/*.patch*", |path| {
             let input = std::fs::read_to_string(path).unwrap();
-            let patches = patches_from_str(&input).unwrap();
+            let patches = patches_from_str(&input);
             insta::assert_debug_snapshot!(patches);
         });
     }
