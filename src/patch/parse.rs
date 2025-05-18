@@ -378,7 +378,10 @@ fn hunk_lines<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Vec<Li
     let mut no_newline_insert = false;
 
     while let Some(line) = parser.peek() {
-        let line = if line.starts_with("@") || line.starts_with("diff ") || line.starts_with("-- ")
+        let line = if line.starts_with("@")
+            || line.starts_with("diff ")
+            || line.starts_with("-- ")
+            || line.starts_with("--\n")
         {
             break;
         } else if no_newline_context {
