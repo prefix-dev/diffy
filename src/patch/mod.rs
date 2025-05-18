@@ -6,6 +6,8 @@ pub use parse::ParsePatchError;
 
 use std::{borrow::Cow, fmt, ops};
 
+use crate::utils::Text;
+
 const NO_NEWLINE_AT_EOF: &str = "\\ No newline at end of file";
 
 /// Representation of all the differences between two files
@@ -19,7 +21,7 @@ pub struct Patch<'a, T: ToOwned + ?Sized> {
     hunks: Vec<Hunk<'a, T>>,
 }
 
-impl<'a, T: ToOwned + ?Sized> Patch<'a, T> {
+impl<'a, T: Text + ToOwned + ?Sized> Patch<'a, T> {
     pub(crate) fn new<O, M>(
         original: Option<O>,
         modified: Option<M>,
@@ -257,7 +259,7 @@ fn hunk_lines_count<T: ?Sized>(lines: &[Line<'_, T>]) -> (usize, usize) {
     })
 }
 
-impl<'a, T: ?Sized> Hunk<'a, T> {
+impl<'a, T: Text + ?Sized> Hunk<'a, T> {
     pub(crate) fn new(
         old_range: HunkRange,
         new_range: HunkRange,
@@ -266,8 +268,18 @@ impl<'a, T: ?Sized> Hunk<'a, T> {
     ) -> Self {
         let (old_count, new_count) = hunk_lines_count(&lines);
 
-        assert_eq!(old_range.len, old_count);
-        assert_eq!(new_range.len, new_count);
+        // TODO: Move to separate function to remove repitition. Code was copied from parser module.
+        let tolerance: usize = lines
+            .last()
+            .map(|l| match l {
+                Line::Context(t) => t.ends_with("\n"),
+                _ => false,
+            })
+            .unwrap_or_default()
+            .into();
+
+        assert!(old_count.abs_diff(old_range.len) <= tolerance);
+        assert!(new_count.abs_diff(new_range.len) <= tolerance);
 
         Self {
             old_range,

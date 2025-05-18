@@ -313,9 +313,19 @@ fn hunk<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Hunk<'a, T>>
     let (range1, range2, function_context) = hunk_header(parser.next()?)?;
     let lines = hunk_lines(parser)?;
 
+    // Increase tolerance for the last line. Needed for files like
+    let tolerance: usize = lines
+        .last()
+        .map(|l| match l {
+            Line::Context(t) => t.ends_with("\n"),
+            _ => false,
+        })
+        .unwrap_or_default()
+        .into();
+
     // check counts of lines to see if they match the ranges in the hunk header
     let (len1, len2) = super::hunk_lines_count(&lines);
-    if len1 != range1.len || len2 != range2.len {
+    if len1.abs_diff(range1.len) > tolerance || len2.abs_diff(range2.len) > tolerance {
         return Err(ParsePatchError::HunkHeaderHunkMismatch);
     }
 

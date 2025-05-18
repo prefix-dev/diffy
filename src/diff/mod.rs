@@ -1,7 +1,7 @@
 use crate::{
     patch::{Hunk, HunkRange, Line, Patch},
     range::{DiffRange, SliceLike},
-    utils::Classifier,
+    utils::{Classifier, Text},
 };
 use std::{borrow::Cow, cmp, ops};
 
@@ -233,7 +233,7 @@ pub fn create_patch_bytes<'a>(original: &'a [u8], modified: &'a [u8]) -> Patch<'
     DiffOptions::default().create_patch_bytes(original, modified)
 }
 
-fn to_hunks<'a, T: ?Sized>(
+fn to_hunks<'a, T: Text + ?Sized>(
     lines1: &[&'a T],
     lines2: &[&'a T],
     solution: &[DiffRange<[u64]>],

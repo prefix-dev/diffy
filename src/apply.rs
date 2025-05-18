@@ -1,6 +1,6 @@
 use crate::{
     patch::{Hunk, Line, Patch},
-    utils::LineIter,
+    utils::{LineIter, Text},
 };
 use std::{fmt, iter};
 
@@ -117,7 +117,7 @@ pub fn apply_bytes(base_image: &[u8], patch: &Patch<'_, [u8]>) -> Result<Vec<u8>
         .collect())
 }
 
-fn apply_hunk<'a, T: PartialEq + ?Sized>(
+fn apply_hunk<'a, T: Text + PartialEq + ?Sized>(
     image: &mut Vec<ImageLine<'a, T>>,
     hunk: &Hunk<'a, T>,
 ) -> Result<(), ()> {
@@ -139,7 +139,7 @@ fn apply_hunk<'a, T: PartialEq + ?Sized>(
 //
 // It might be worth looking into other possible positions to apply the hunk to as described here:
 // https://neil.fraser.name/writing/patch/
-fn find_position<T: PartialEq + ?Sized>(
+fn find_position<T: Text + PartialEq + ?Sized>(
     image: &[ImageLine<T>],
     hunk: &Hunk<'_, T>,
 ) -> Option<usize> {
