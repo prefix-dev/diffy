@@ -212,6 +212,8 @@ fn parse_filename<'a, T: Text + ToOwned + ?Sized>(
 
     let filename = if let Some((filename, _)) = line.split_at_exclusive("\t") {
         filename
+    } else if let Some((filename, _)) = line.split_at_exclusive(" ") {
+        filename
     } else if let Some((filename, _)) = line.split_at_exclusive("\n") {
         filename
     } else {
