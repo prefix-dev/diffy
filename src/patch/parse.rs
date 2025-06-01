@@ -312,7 +312,7 @@ fn hunks<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Vec<Hunk<'a
 }
 
 // Hunk ranges tolerance levels based on the end lines.
-pub fn tolerance_level<T: Text + ?Sized>(lines: &Vec<Line<'_, T>>) -> (usize, bool) {
+pub fn tolerance_level<T: Text + ?Sized>(lines: &[Line<'_, T>]) -> (usize, bool) {
     let mut tolerance = 0;
     let mut revlines = lines.iter().rev();
     while let Some(Line::Context(l)) = revlines.next() {
