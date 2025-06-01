@@ -4,7 +4,6 @@ use crate::{
 };
 use std::{fmt, iter};
 
-
 /// An error returned when [`apply`]ing a `Patch` fails
 #[derive(Debug)]
 pub struct ApplyError(usize);
@@ -58,8 +57,12 @@ impl FuzzyComparable for str {
 
         let (s1, s2) = if config.ignore_whitespace {
             (
-                s1.chars().filter(|c| !c.is_whitespace()).collect::<String>(),
-                s2.chars().filter(|c| !c.is_whitespace()).collect::<String>(),
+                s1.chars()
+                    .filter(|c| !c.is_whitespace())
+                    .collect::<String>(),
+                s2.chars()
+                    .filter(|c| !c.is_whitespace())
+                    .collect::<String>(),
             )
         } else {
             (s1, s2)
@@ -69,13 +72,13 @@ impl FuzzyComparable for str {
             return 1.0;
         }
 
-        // Simple Levenshtein-based similarity
+        // Use strsim's Levenshtein distance implementation
         let max_len = s1.len().max(s2.len());
         if max_len == 0 {
             return 1.0;
         }
 
-        let distance = levenshtein_distance(&s1, &s2);
+        let distance = strsim::levenshtein(&s1, &s2);
         1.0 - (distance as f32 / max_len as f32)
     }
 }
@@ -97,7 +100,11 @@ impl FuzzyComparable for [u8] {
             s1.similarity(s2, config)
         } else {
             // Fall back to exact byte comparison
-            if self == other { 1.0 } else { 0.0 }
+            if self == other {
+                1.0
+            } else {
+                0.0
+            }
         }
     }
 }
@@ -418,41 +425,6 @@ where
         }
     }
     true
-}
-
-/// Calculate Levenshtein distance between two strings
-fn levenshtein_distance(s1: &str, s2: &str) -> usize {
-    let chars1: Vec<char> = s1.chars().collect();
-    let chars2: Vec<char> = s2.chars().collect();
-    let len1 = chars1.len();
-    let len2 = chars2.len();
-
-    if len1 == 0 {
-        return len2;
-    }
-    if len2 == 0 {
-        return len1;
-    }
-
-    let mut matrix = vec![vec![0; len2 + 1]; len1 + 1];
-
-    for (i, item) in matrix.iter_mut().enumerate().take(len1 + 1)  {
-        item[0] = i;
-    }
-    for (j, item) in matrix.iter_mut().enumerate().take(len2 + 1) {
-        item[j] = j;
-    }
-
-    for i in 1..=len1 {
-        for j in 1..=len2 {
-            let cost = if chars1[i - 1] == chars2[j - 1] { 0 } else { 1 };
-            matrix[i][j] = (matrix[i - 1][j] + 1)
-                .min(matrix[i][j - 1] + 1)
-                .min(matrix[i - 1][j - 1] + cost);
-        }
-    }
-
-    matrix[len1][len2]
 }
 
 // Search in `image` for a place to apply hunk.
