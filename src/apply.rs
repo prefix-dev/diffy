@@ -344,9 +344,33 @@ where
         }
     }
 
-    // If we don't have enough context lines to fuzz, fall back to exact matching
+    // NOTE: Temporary (?) fix mostly for line endings.
+    // If we don't have enough context lines to fuzz, fall back to exact matching, but still check for string similarity.
     if pre_image_context_indices.len() < fuzz_level {
-        return match_fragment(image, lines, pos);
+        let len = pre_image_line_count(lines);
+
+        let image = if let Some(image) = image.get(pos..pos + len) {
+            image
+        } else {
+            return false;
+        };
+
+        // If any of these lines have already been patched then we can't match at this position
+        if image.iter().any(ImageLine::is_patched) {
+            return false;
+        }
+
+        for (pre_line, image_line) in pre_image_lines.iter().zip(image_lines.iter()) {
+            // For non-ignored lines, check similarity
+            let similarity = pre_line.similarity(*image_line, config);
+
+            // Require high similarity for non-ignored lines
+            if similarity < 0.8 {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // Try different combinations of ignoring context lines
