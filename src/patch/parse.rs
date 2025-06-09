@@ -1,6 +1,6 @@
 //! Parse a Patch
 
-use super::{Hunk, HunkRange, Line, ESCAPED_CHARS_BYTES, NO_NEWLINE_AT_EOF};
+use super::{ESCAPED_CHARS_BYTES, Hunk, HunkRange, Line, NO_NEWLINE_AT_EOF};
 use crate::{
     patch::Patch,
     utils::{LineIter, Text},
@@ -76,14 +76,46 @@ pub enum ParsePatchError {
     MissingNewline,
 }
 
+#[derive(Debug, Clone, Default)]
+pub enum HunkRangeStrategy {
+    /// Do not trust the line counts in the hunk headers and check
+    /// that they are indeed match hunk lines.
+    #[default]
+    Check,
+    /// Do not trust the line counts in the hunk headers, but infer
+    /// them by inspecting the patch (e.g. after editing the patch
+    /// without adjusting the hunk headers appropriately).
+    ///
+    /// Note that we also skip all empty lines at then end of the hunk
+    /// lines before calculating hunk ranges.
+    ///
+    /// Tries to resemble behavior of `git apply` `--recount`
+    /// argument.
+    Recount,
+    /// Trust the line counts in the hunk headers.
+    Ignore,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ParserConfig {
+    /// Choose what to do with hunk ranges.
+    hunk_strategy: HunkRangeStrategy,
+}
+
 struct Parser<'a, T: Text + ?Sized> {
     lines: std::iter::Peekable<LineIter<'a, T>>,
+    config: ParserConfig,
 }
 
 impl<'a, T: Text + ?Sized> Parser<'a, T> {
     fn new(input: &'a T) -> Self {
+        Self::with_config(input, ParserConfig::default())
+    }
+
+    fn with_config(input: &'a T, config: ParserConfig) -> Self {
         Self {
             lines: LineIter::new(input).peekable(),
+            config,
         }
     }
 
@@ -98,7 +130,14 @@ impl<'a, T: Text + ?Sized> Parser<'a, T> {
 }
 
 pub fn parse_multiple(input: &str) -> Result<Vec<Patch<'_, str>>> {
-    let mut parser = Parser::new(input);
+    parse_multiple_with_config(input, ParserConfig::default())
+}
+
+pub fn parse_multiple_with_config(
+    input: &str,
+    config: ParserConfig,
+) -> Result<Vec<Patch<'_, str>>> {
+    let mut parser = Parser::with_config(input, config);
     let mut patches = vec![];
     loop {
         match (patch_header(&mut parser), hunks(&mut parser)) {
@@ -129,7 +168,14 @@ pub fn parse(input: &str) -> Result<Patch<'_, str>> {
 }
 
 pub fn parse_bytes_multiple(input: &[u8]) -> Result<Vec<Patch<'_, [u8]>>> {
-    let mut parser = Parser::new(input);
+    parse_bytes_multiple_with_config(input, ParserConfig::default())
+}
+
+pub fn parse_bytes_multiple_with_config(
+    input: &[u8],
+    config: ParserConfig,
+) -> Result<Vec<Patch<'_, [u8]>>> {
+    let mut parser = Parser::with_config(input, config);
     let mut patches = vec![];
     loop {
         match (patch_header(&mut parser), hunks(&mut parser)) {
@@ -312,7 +358,7 @@ fn hunks<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Vec<Hunk<'a
 }
 
 // Hunk ranges tolerance levels based on the end lines.
-pub fn tolerance_level<T: Text + ?Sized>(lines: &[Line<'_, T>]) -> (usize, bool) {
+fn tolerance_level<T: Text + ?Sized>(lines: &[Line<'_, T>]) -> (usize, bool) {
     let mut tolerance = 0;
     let mut revlines = lines.iter().rev();
     while let Some(Line::Context(l)) = revlines.next() {
@@ -331,17 +377,46 @@ pub fn tolerance_level<T: Text + ?Sized>(lines: &[Line<'_, T>]) -> (usize, bool)
 
 fn hunk<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Hunk<'a, T>> {
     let n = *parser.peek().ok_or(ParsePatchError::UnexpectedEof)?;
-    let (range1, range2, function_context) = hunk_header(n)?;
+    let (mut range1, mut range2, function_context) = hunk_header(n)?;
     let _ = parser.next();
-    let lines = hunk_lines(parser)?;
-
-    let t = tolerance_level(&lines);
-    let tolerance = t.0 + usize::from(t.1);
+    let mut lines = hunk_lines(parser)?;
 
     // check counts of lines to see if they match the ranges in the hunk header
     let (len1, len2) = super::hunk_lines_count(&lines);
-    if len1.abs_diff(range1.len) > tolerance || len2.abs_diff(range2.len) > tolerance {
-        return Err(ParsePatchError::HunkHeaderHunkMismatch);
+
+    match parser.config.hunk_strategy {
+        HunkRangeStrategy::Check => {
+            let t = tolerance_level(&lines);
+            let tolerance = t.0 + usize::from(t.1);
+
+            if len1.abs_diff(range1.len) > tolerance || len2.abs_diff(range2.len) > tolerance {
+                return Err(ParsePatchError::HunkHeaderHunkMismatch);
+            }
+        }
+        HunkRangeStrategy::Recount => {
+            let empty_context_lines = lines
+                .iter()
+                .rev()
+                .take_while(|l| match **l {
+                    Line::Context(c) => {
+                        [b"\r\n".as_slice(), b"\n".as_slice()].contains(&c.as_bytes())
+                    }
+                    _ => false,
+                })
+                .count();
+
+            lines = lines
+                .into_iter()
+                .rev()
+                .skip(empty_context_lines)
+                .rev()
+                .collect();
+
+            // Should never overflow since len{1,2} >= empty_context_lines by the defintion above.
+            range1.len = len1 - empty_context_lines;
+            range2.len = len2 - empty_context_lines;
+        }
+        HunkRangeStrategy::Ignore => (),
     }
 
     Ok(Hunk::new(range1, range2, function_context, lines))
@@ -455,7 +530,7 @@ fn strip_newline<T: Text + ?Sized>(s: &T) -> Result<&T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::patch::patches_from_str;
+    use crate::patch::parse::{HunkRangeStrategy, ParserConfig, parse_multiple_with_config};
 
     use super::{parse, parse_bytes};
 
@@ -594,9 +669,14 @@ mod tests {
 
     #[test]
     fn test_real_world_patches() {
-        insta::glob!("test-data/*.patch*", |path| {
+        insta::glob!("test-data/*.patch", |path| {
             let input = std::fs::read_to_string(path).unwrap();
-            let patches = patches_from_str(&input);
+            let patches = parse_multiple_with_config(
+                &input,
+                ParserConfig {
+                    hunk_strategy: HunkRangeStrategy::Recount,
+                },
+            );
             insta::assert_debug_snapshot!(patches);
         });
     }

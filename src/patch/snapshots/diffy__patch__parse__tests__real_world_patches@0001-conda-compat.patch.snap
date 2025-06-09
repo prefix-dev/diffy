@@ -20,11 +20,11 @@ Ok(
                 Hunk {
                     old_range: HunkRange {
                         start: 624,
-                        len: 7,
+                        len: 6,
                     },
                     new_range: HunkRange {
                         start: 624,
-                        len: 7,
+                        len: 6,
                     },
                     function_context: Some(
                         "END FUNCTION rotationMatrix\n",

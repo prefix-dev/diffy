@@ -2,8 +2,7 @@ mod format;
 mod parse;
 
 pub use format::PatchFormatter;
-use parse::tolerance_level;
-pub use parse::ParsePatchError;
+pub use parse::{HunkRangeStrategy, ParsePatchError, ParserConfig};
 
 use std::{borrow::Cow, fmt, ops};
 
@@ -84,8 +83,22 @@ pub fn patches_from_str(input: &str) -> Result<Vec<Patch<'_, str>>, ParsePatchEr
     parse::parse_multiple(input)
 }
 
+pub fn patches_from_str_with_config(
+    input: &str,
+    config: ParserConfig,
+) -> Result<Vec<Patch<'_, str>>, ParsePatchError> {
+    parse::parse_multiple_with_config(input, config)
+}
+
 pub fn patches_from_bytes(input: &[u8]) -> Result<Vec<Patch<'_, [u8]>>, ParsePatchError> {
     parse::parse_bytes_multiple(input)
+}
+
+pub fn patches_from_bytes_with_config(
+    input: &[u8],
+    config: ParserConfig,
+) -> Result<Vec<Patch<'_, [u8]>>, ParsePatchError> {
+    parse::parse_bytes_multiple_with_config(input, config)
 }
 
 impl<'a> Patch<'a, str> {
@@ -267,31 +280,11 @@ impl<'a, T: Text + ?Sized> Hunk<'a, T> {
         function_context: Option<&'a T>,
         lines: Vec<Line<'a, T>>,
     ) -> Self {
-        let (old_count, new_count) = hunk_lines_count(&lines);
-
-        let (newlines_at_the_end, last_line_has_newline) = tolerance_level(&lines);
-        let tolerance = newlines_at_the_end + usize::from(last_line_has_newline);
-
-        let old_diff = old_count.abs_diff(old_range.len);
-        let new_diff = new_count.abs_diff(new_range.len);
-
-        assert!(old_diff <= tolerance);
-        assert!(new_diff <= tolerance);
-
-        // We want to omit newlines that are out of hunk to apply only
-        // expected amount of newlines.
-        let fit_hunk_offset = new_count.saturating_sub(new_range.len);
-
         Self {
             old_range,
             new_range,
             function_context,
-            lines: lines // We want skip empty lines that are out of hunk.
-                .into_iter()
-                .rev()
-                .skip(fit_hunk_offset)
-                .rev()
-                .collect(),
+            lines,
         }
     }
 

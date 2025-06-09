@@ -1,4 +1,4 @@
-use super::{Hunk, Line, Patch, NO_NEWLINE_AT_EOF};
+use super::{Hunk, Line, NO_NEWLINE_AT_EOF, Patch};
 use nu_ansi_term::{Color, Style};
 use std::{
     fmt::{Display, Formatter, Result},

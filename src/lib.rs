@@ -226,10 +226,11 @@ mod patch;
 mod range;
 mod utils;
 
-pub use apply::{apply, apply_bytes, apply_with_config, ApplyError, FuzzyConfig};
-pub use diff::{create_patch, create_patch_bytes, DiffOptions};
-pub use merge::{merge, merge_bytes, ConflictStyle, MergeOptions};
+pub use apply::{ApplyError, FuzzyConfig, apply, apply_bytes, apply_with_config};
+pub use diff::{DiffOptions, create_patch, create_patch_bytes};
+pub use merge::{ConflictStyle, MergeOptions, merge, merge_bytes};
 pub use patch::{
-    patches_from_bytes, patches_from_str, Hunk, HunkRange, Line, ParsePatchError, Patch,
-    PatchFormatter,
+    Hunk, HunkRange, HunkRangeStrategy, Line, ParsePatchError, ParserConfig, Patch, PatchFormatter,
+    patches_from_bytes, patches_from_bytes_with_config, patches_from_str,
+    patches_from_str_with_config,
 };
