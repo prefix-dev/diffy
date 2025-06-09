@@ -472,6 +472,7 @@ fn hunk_lines<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Vec<Li
             || line.starts_with("diff ")
             || line.starts_with("-- ")
             || line.starts_with("--\n")
+            || line.starts_with("--\r\n")
             || line.starts_with("--- ")
         {
             break;
@@ -479,7 +480,7 @@ fn hunk_lines<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Vec<Li
             return Err(ParsePatchError::ExpectedEndOfHunk);
         } else if let Some(line) = line.strip_prefix(" ") {
             Line::Context(line)
-        } else if line.starts_with("\n") {
+        } else if line.starts_with("\n") || line.starts_with("\r\n") {
             Line::Context(*line)
         } else if let Some(line) = line.strip_prefix("-") {
             if no_newline_delete {
