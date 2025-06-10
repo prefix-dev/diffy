@@ -99,7 +99,7 @@ pub enum HunkRangeStrategy {
 #[derive(Debug, Clone, Default)]
 pub struct ParserConfig {
     /// Choose what to do with hunk ranges.
-    hunk_strategy: HunkRangeStrategy,
+    pub hunk_strategy: HunkRangeStrategy,
 }
 
 struct Parser<'a, T: Text + ?Sized> {
