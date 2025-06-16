@@ -11,7 +11,7 @@ use crate::utils::Text;
 const NO_NEWLINE_AT_EOF: &str = "\\ No newline at end of file";
 
 /// Representation of all the differences between two files
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, PartialOrd, Ord, Eq)]
 pub struct Patch<'a, T: ToOwned + ?Sized> {
     // TODO GNU patch is able to parse patches without filename headers.
     // This should be changed to an `Option` type to reflect this instead of setting this to ""
@@ -164,7 +164,7 @@ where
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
 struct Filename<'a, T: ToOwned + ?Sized>(Cow<'a, T>);
 
 const ESCAPED_CHARS: &[char] = &['\n', '\t', '\0', '\r', '\"', '\\'];
@@ -255,7 +255,7 @@ where
 }
 
 /// Represents a group of differing lines between two files
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Hunk<'a, T: ?Sized> {
     old_range: HunkRange,
     new_range: HunkRange,
@@ -333,7 +333,7 @@ impl<T: ?Sized> Clone for Hunk<'_, T> {
 }
 
 /// The range of lines in a file for a particular `Hunk`.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct HunkRange {
     /// The starting line number of a hunk
     start: usize,
@@ -386,7 +386,7 @@ impl fmt::Display for HunkRange {
 ///
 /// A `Line` contains the terminating newline character `\n` unless it is the final
 /// line in the file and the file does not end with a newline character.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Line<'a, T: ?Sized> {
     /// A line providing context in the diff which is present in both the old and new file
     Context(&'a T),
