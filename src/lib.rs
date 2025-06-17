@@ -226,7 +226,9 @@ mod patch;
 mod range;
 mod utils;
 
-pub use apply::{ApplyError, FuzzyConfig, apply, apply_bytes, apply_with_config};
+pub use apply::{
+    ApplyError, FuzzyConfig, apply, apply_bytes, apply_bytes_with_config, apply_with_config,
+};
 pub use diff::{DiffOptions, create_patch, create_patch_bytes};
 pub use merge::{ConflictStyle, MergeOptions, merge, merge_bytes};
 pub use patch::{
