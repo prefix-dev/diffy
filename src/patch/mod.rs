@@ -4,7 +4,11 @@ mod parse;
 pub use format::PatchFormatter;
 pub use parse::{HunkRangeStrategy, ParsePatchError, ParserConfig};
 
-use std::{borrow::Cow, fmt, ops};
+use std::{
+    borrow::Cow,
+    fmt::{self, Debug},
+    ops,
+};
 
 use crate::utils::Text;
 
@@ -150,10 +154,9 @@ impl fmt::Display for Patch<'_, str> {
     }
 }
 
-impl<T: ?Sized, O> fmt::Debug for Patch<'_, T>
+impl<T: ?Sized> fmt::Debug for Patch<'_, T>
 where
-    T: ToOwned<Owned = O> + fmt::Debug,
-    O: std::borrow::Borrow<T> + fmt::Debug,
+    T: ToOwned<Owned: Debug> + fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Patch")
@@ -255,8 +258,8 @@ where
 }
 
 /// Represents a group of differing lines between two files
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Hunk<'a, T: ?Sized> {
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+pub struct Hunk<'a, T: ?Sized + ToOwned> {
     old_range: HunkRange,
     new_range: HunkRange,
 
@@ -265,7 +268,23 @@ pub struct Hunk<'a, T: ?Sized> {
     lines: Vec<Line<'a, T>>,
 }
 
-fn hunk_lines_count<T: ?Sized>(lines: &[Line<'_, T>]) -> (usize, usize) {
+// We implement this trait manually, because we want specific type
+// constraints.
+impl<T> Debug for Hunk<'_, T>
+where
+    T: Debug + ToOwned<Owned: Debug> + ?Sized,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Hunk")
+            .field("old_range", &self.old_range)
+            .field("new_range", &self.new_range)
+            .field("function_context", &self.function_context)
+            .field("lines", &self.lines)
+            .finish()
+    }
+}
+
+fn hunk_lines_count<T: ?Sized + ToOwned>(lines: &[Line<'_, T>]) -> (usize, usize) {
     lines.iter().fold((0, 0), |count, line| match line {
         Line::Context(_) => (count.0 + 1, count.1 + 1),
         Line::Delete(_) => (count.0 + 1, count.1),
@@ -273,7 +292,7 @@ fn hunk_lines_count<T: ?Sized>(lines: &[Line<'_, T>]) -> (usize, usize) {
     })
 }
 
-impl<'a, T: Text + ?Sized> Hunk<'a, T> {
+impl<'a, T: Text + ?Sized + ToOwned> Hunk<'a, T> {
     pub(crate) fn new(
         old_range: HunkRange,
         new_range: HunkRange,
@@ -321,7 +340,7 @@ impl<'a, T: Text + ?Sized> Hunk<'a, T> {
     }
 }
 
-impl<T: ?Sized> Clone for Hunk<'_, T> {
+impl<T: ?Sized + ToOwned> Clone for Hunk<'_, T> {
     fn clone(&self) -> Self {
         Self {
             old_range: self.old_range,
@@ -386,30 +405,45 @@ impl fmt::Display for HunkRange {
 ///
 /// A `Line` contains the terminating newline character `\n` unless it is the final
 /// line in the file and the file does not end with a newline character.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Line<'a, T: ?Sized> {
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+pub enum Line<'a, T: ?Sized + ToOwned> {
     /// A line providing context in the diff which is present in both the old and new file
-    Context(&'a T),
+    Context(Cow<'a, T>),
     /// A line deleted from the old file
-    Delete(&'a T),
+    Delete(Cow<'a, T>),
     /// A line inserted to the new file
-    Insert(&'a T),
+    Insert(Cow<'a, T>),
 }
 
-impl<T: ?Sized> Copy for Line<'_, T> {}
-
-impl<T: ?Sized> Clone for Line<'_, T> {
+impl<T: ?Sized + ToOwned> Clone for Line<'_, T> {
     fn clone(&self) -> Self {
-        *self
+        match self {
+            Line::Context(cow) => Line::Context(cow.clone()),
+            Line::Delete(cow) => Line::Delete(cow.clone()),
+            Line::Insert(cow) => Line::Insert(cow.clone()),
+        }
     }
 }
 
-impl<T: ?Sized> Line<'_, T> {
+impl<T> Debug for Line<'_, T>
+where
+    T: Debug + ToOwned<Owned: Debug> + ?Sized,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Line::Context(cow) => f.debug_tuple("Context").field(cow).finish(),
+            Line::Delete(cow) => f.debug_tuple("Delete").field(cow).finish(),
+            Line::Insert(cow) => f.debug_tuple("Insert").field(cow).finish(),
+        }
+    }
+}
+
+impl<T: ?Sized + ToOwned> Line<'_, T> {
     pub fn reverse(&self) -> Self {
         match self {
-            Line::Context(s) => Line::Context(s),
-            Line::Delete(s) => Line::Insert(s),
-            Line::Insert(s) => Line::Delete(s),
+            Line::Context(s) => Line::Context(s.clone()),
+            Line::Delete(s) => Line::Insert(s.clone()),
+            Line::Insert(s) => Line::Delete(s.clone()),
         }
     }
 }

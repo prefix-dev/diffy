@@ -90,7 +90,7 @@ impl PatchFormatter {
         HunkDisplay { f: self, hunk }
     }
 
-    fn write_hunk_into<T: AsRef<[u8]> + ?Sized, W: io::Write>(
+    fn write_hunk_into<T: AsRef<[u8]> + ?Sized + ToOwned, W: io::Write>(
         &self,
         hunk: &Hunk<'_, T>,
         w: W,
@@ -102,7 +102,7 @@ impl PatchFormatter {
         LineDisplay { f: self, line }
     }
 
-    fn write_line_into<T: AsRef<[u8]> + ?Sized, W: io::Write>(
+    fn write_line_into<T: AsRef<[u8]> + ?Sized + ToOwned, W: io::Write>(
         &self,
         line: &Line<'_, T>,
         w: W,
@@ -176,12 +176,12 @@ impl Display for PatchDisplay<'_, str> {
     }
 }
 
-struct HunkDisplay<'a, T: ?Sized> {
+struct HunkDisplay<'a, T: ?Sized + ToOwned> {
     f: &'a PatchFormatter,
     hunk: &'a Hunk<'a, T>,
 }
 
-impl<T: AsRef<[u8]> + ?Sized> HunkDisplay<'_, T> {
+impl<T: AsRef<[u8]> + ?Sized + ToOwned> HunkDisplay<'_, T> {
     fn write_into<W: io::Write>(&self, mut w: W) -> io::Result<()> {
         if self.f.with_color {
             write!(w, "{}", self.f.hunk_header.prefix())?;
@@ -242,12 +242,12 @@ impl Display for HunkDisplay<'_, str> {
     }
 }
 
-struct LineDisplay<'a, T: ?Sized> {
+struct LineDisplay<'a, T: ?Sized + ToOwned> {
     f: &'a PatchFormatter,
     line: &'a Line<'a, T>,
 }
 
-impl<T: AsRef<[u8]> + ?Sized> LineDisplay<'_, T> {
+impl<T: AsRef<[u8]> + ?Sized + ToOwned> LineDisplay<'_, T> {
     fn write_into<W: io::Write>(&self, mut w: W) -> io::Result<()> {
         let (sign, line, style) = match self.line {
             Line::Context(line) => (' ', line.as_ref(), self.f.context),
@@ -259,18 +259,18 @@ impl<T: AsRef<[u8]> + ?Sized> LineDisplay<'_, T> {
             write!(w, "{}", style.prefix())?;
         }
 
-        if self.f.suppress_blank_empty && sign == ' ' && line == b"\n" {
-            w.write_all(line)?;
+        if self.f.suppress_blank_empty && sign == ' ' && line.as_ref() == b"\n" {
+            w.write_all(line.as_ref())?;
         } else {
             write!(w, "{}", sign)?;
-            w.write_all(line)?;
+            w.write_all(line.as_ref())?;
         }
 
         if self.f.with_color {
             write!(w, "{}", style.suffix())?;
         }
 
-        if !line.ends_with(b"\n") {
+        if !line.as_ref().ends_with(b"\n") {
             writeln!(w)?;
             if self.f.with_missing_newline_message {
                 writeln!(w, "{}", NO_NEWLINE_AT_EOF)?;

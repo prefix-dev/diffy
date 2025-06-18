@@ -233,7 +233,7 @@ pub fn create_patch_bytes<'a>(original: &'a [u8], modified: &'a [u8]) -> Patch<'
     DiffOptions::default().create_patch_bytes(original, modified)
 }
 
-fn to_hunks<'a, T: Text + ?Sized>(
+fn to_hunks<'a, T: Text + ?Sized + ToOwned>(
     lines1: &[&'a T],
     lines2: &[&'a T],
     solution: &[DiffRange<[u64]>],
@@ -260,18 +260,18 @@ fn to_hunks<'a, T: Text + ?Sized>(
 
         // Pre-context
         for line in lines2.get(start2..script.new.start).into_iter().flatten() {
-            lines.push(Line::Context(*line));
+            lines.push(Line::Context(Cow::Borrowed(*line)));
         }
 
         loop {
             // Delete lines from text1
             for line in lines1.get(script.old.clone()).into_iter().flatten() {
-                lines.push(Line::Delete(*line));
+                lines.push(Line::Delete(Cow::Borrowed(*line)));
             }
 
             // Insert lines from text2
             for line in lines2.get(script.new.clone()).into_iter().flatten() {
-                lines.push(Line::Insert(*line));
+                lines.push(Line::Insert(Cow::Borrowed(*line)));
             }
 
             if let Some(s) = edit_script.get(idx + 1) {
@@ -283,7 +283,7 @@ fn to_hunks<'a, T: Text + ?Sized>(
                     for (_i1, i2) in (script.old.end..s.old.start).zip(script.new.end..s.new.start)
                     {
                         if let Some(line) = lines2.get(i2) {
-                            lines.push(Line::Context(*line));
+                            lines.push(Line::Context(Cow::Borrowed(*line)));
                         }
                     }
 
@@ -309,7 +309,7 @@ fn to_hunks<'a, T: Text + ?Sized>(
 
         // Post-context
         for line in lines2.get(script.new.end..end2).into_iter().flatten() {
-            lines.push(Line::Context(*line));
+            lines.push(Line::Context(Cow::Borrowed(*line)));
         }
 
         let len1 = end1 - start1;

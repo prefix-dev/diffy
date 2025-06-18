@@ -188,11 +188,11 @@ pub fn apply_bytes_with_config(
 
 fn apply_hunk_with_config<'a, T>(
     image: &mut Vec<ImageLine<'a, T>>,
-    hunk: &Hunk<'a, T>,
+    hunk: &'a Hunk<'a, T>,
     config: &FuzzyConfig,
 ) -> Result<(), ()>
 where
-    T: PartialEq + FuzzyComparable + ?Sized + Text,
+    T: PartialEq + FuzzyComparable + ?Sized + Text + ToOwned,
 {
     // Find position with fuzzy matching
     let (pos, fuzz_level) = find_position_fuzzy(image, hunk, config).ok_or(())?;
@@ -215,10 +215,10 @@ where
 /// Apply hunk while preserving original context lines (for fuzzy matching)
 fn apply_hunk_preserving_context<'a, T>(
     image: &mut Vec<ImageLine<'a, T>>,
-    hunk: &Hunk<'a, T>,
+    hunk: &'a Hunk<'a, T>,
     pos: usize,
 ) where
-    T: ?Sized + Text,
+    T: ?Sized + Text + ToOwned,
 {
     let mut image_offset = 0;
 
@@ -237,7 +237,7 @@ fn apply_hunk_preserving_context<'a, T>(
             }
             Line::Insert(content) => {
                 // Insert the new line
-                image.insert(pos + image_offset, ImageLine::Patched(content));
+                image.insert(pos + image_offset, ImageLine::Patched(content.as_ref()));
                 image_offset += 1;
             }
         }
@@ -251,7 +251,7 @@ fn find_position_fuzzy<T>(
     config: &FuzzyConfig,
 ) -> Option<(usize, usize)>
 where
-    T: PartialEq + FuzzyComparable + ?Sized + Text,
+    T: PartialEq + FuzzyComparable + ?Sized + Text + ToOwned,
 {
     // Try exact match first (fuzz level 0)
     if let Some(pos) = find_position(image, hunk) {
@@ -276,7 +276,7 @@ fn find_position_with_fuzz<T>(
     config: &FuzzyConfig,
 ) -> Option<usize>
 where
-    T: PartialEq + FuzzyComparable + ?Sized + Text,
+    T: PartialEq + FuzzyComparable + ?Sized + Text + ToOwned,
 {
     let pos = std::cmp::min(hunk.new_range().start().saturating_sub(1), image.len());
 
@@ -297,7 +297,7 @@ fn match_fragment_fuzzy<T>(
     config: &FuzzyConfig,
 ) -> bool
 where
-    T: PartialEq + FuzzyComparable + ?Sized,
+    T: PartialEq + FuzzyComparable + ?Sized + ToOwned,
 {
     let len = pre_image_line_count(lines);
 
@@ -453,7 +453,7 @@ where
 //
 // It might be worth looking into other possible positions to apply the hunk to as described here:
 // https://neil.fraser.name/writing/patch/
-fn find_position<T: PartialEq + ?Sized + Text>(
+fn find_position<T: PartialEq + ?Sized + Text + ToOwned>(
     image: &[ImageLine<T>],
     hunk: &Hunk<'_, T>,
 ) -> Option<usize> {
@@ -471,25 +471,29 @@ fn find_position<T: PartialEq + ?Sized + Text>(
         .find(|&pos| match_fragment(image, hunk.lines(), pos))
 }
 
-fn pre_image_line_count<T: ?Sized>(lines: &[Line<'_, T>]) -> usize {
+fn pre_image_line_count<T: ?Sized + ToOwned>(lines: &[Line<'_, T>]) -> usize {
     pre_image(lines).count()
 }
 
-fn post_image<'a, 'b, T: ?Sized>(lines: &'b [Line<'a, T>]) -> impl Iterator<Item = &'a T> + 'b {
-    lines.iter().filter_map(|line| match line {
-        Line::Context(l) | Line::Insert(l) => Some(*l),
+fn post_image<'a, 'b: 'a, T: ?Sized + ToOwned>(
+    lines: &'b [Line<'a, T>],
+) -> impl Iterator<Item = &'a T> + 'b {
+    lines.iter().filter_map(move |line| match line {
+        Line::Context(l) | Line::Insert(l) => Some(l.as_ref()),
         Line::Delete(_) => None,
     })
 }
 
-fn pre_image<'a, 'b, T: ?Sized>(lines: &'b [Line<'a, T>]) -> impl Iterator<Item = &'a T> + 'b {
+fn pre_image<'a, 'b: 'a, T: ?Sized + ToOwned>(
+    lines: &'b [Line<'a, T>],
+) -> impl Iterator<Item = &'a T> + 'b {
     lines.iter().filter_map(|line| match line {
-        Line::Context(l) | Line::Delete(l) => Some(*l),
+        Line::Context(l) | Line::Delete(l) => Some(l.as_ref()),
         Line::Insert(_) => None,
     })
 }
 
-fn match_fragment<T: PartialEq + ?Sized>(
+fn match_fragment<T: PartialEq + ?Sized + ToOwned>(
     image: &[ImageLine<T>],
     lines: &[Line<'_, T>],
     pos: usize,

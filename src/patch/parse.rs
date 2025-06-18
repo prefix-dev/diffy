@@ -5,7 +5,10 @@ use crate::{
     patch::Patch,
     utils::{LineIter, Text},
 };
-use std::{borrow::Cow, fmt};
+use std::{
+    borrow::{Borrow, Cow},
+    fmt,
+};
 
 type Result<T, E = ParsePatchError> = std::result::Result<T, E>;
 
@@ -319,7 +322,7 @@ fn escaped_filename<T: Text + ToOwned + ?Sized>(escaped: &T) -> Result<Cow<'_, [
     Ok(filename.into())
 }
 
-fn verify_hunks_in_order<T: ?Sized>(hunks: &[Hunk<'_, T>]) -> bool {
+fn verify_hunks_in_order<T: ?Sized + ToOwned>(hunks: &[Hunk<'_, T>]) -> bool {
     for hunk in hunks.windows(2) {
         if hunk[0].old_range.end() > hunk[1].old_range.start()
             || hunk[0].new_range.end() > hunk[1].new_range.start()
@@ -330,7 +333,7 @@ fn verify_hunks_in_order<T: ?Sized>(hunks: &[Hunk<'_, T>]) -> bool {
     true
 }
 
-fn hunks<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Vec<Hunk<'a, T>>> {
+fn hunks<'a, T: Text + ?Sized + ToOwned>(parser: &mut Parser<'a, T>) -> Result<Vec<Hunk<'a, T>>> {
     let mut hunks = Vec::new();
     while parser.peek().is_some() {
         let r = hunk(parser);
@@ -358,7 +361,7 @@ fn hunks<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Vec<Hunk<'a
 }
 
 // Hunk ranges tolerance levels based on the end lines.
-fn tolerance_level<T: Text + ?Sized>(lines: &[Line<'_, T>]) -> (usize, bool) {
+fn tolerance_level<T: Text + ?Sized + ToOwned>(lines: &[Line<'_, T>]) -> (usize, bool) {
     let mut tolerance = 0;
     let mut revlines = lines.iter().rev();
     while let Some(Line::Context(l)) = revlines.next() {
@@ -375,7 +378,7 @@ fn tolerance_level<T: Text + ?Sized>(lines: &[Line<'_, T>]) -> (usize, bool) {
     (tolerance, line_ends_with_newline)
 }
 
-fn hunk<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Hunk<'a, T>> {
+fn hunk<'a, T: Text + ?Sized + ToOwned>(parser: &mut Parser<'a, T>) -> Result<Hunk<'a, T>> {
     let n = *parser.peek().ok_or(ParsePatchError::UnexpectedEof)?;
     let (mut range1, mut range2, function_context) = hunk_header(n)?;
     let _ = parser.next();
@@ -397,7 +400,7 @@ fn hunk<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Hunk<'a, T>>
             let empty_context_lines = lines
                 .iter()
                 .rev()
-                .take_while(|l| match **l {
+                .take_while(|l| match *l {
                     Line::Context(c) => {
                         [b"\r\n".as_slice(), b"\n".as_slice()].contains(&c.as_bytes())
                     }
@@ -461,7 +464,9 @@ fn range<T: Text + ?Sized>(s: &T) -> Result<HunkRange> {
     Ok(HunkRange::new(start, len))
 }
 
-fn hunk_lines<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Vec<Line<'a, T>>> {
+fn hunk_lines<'a, T: Text + ?Sized + ToOwned>(
+    parser: &mut Parser<'a, T>,
+) -> Result<Vec<Line<'a, T>>> {
     let mut lines: Vec<Line<'a, T>> = Vec::new();
     let mut no_newline_context = false;
     let mut no_newline_delete = false;
@@ -479,19 +484,19 @@ fn hunk_lines<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Vec<Li
         } else if no_newline_context {
             return Err(ParsePatchError::ExpectedEndOfHunk);
         } else if let Some(line) = line.strip_prefix(" ") {
-            Line::Context(line)
+            Line::Context(Cow::Borrowed(line))
         } else if line.starts_with("\n") || line.starts_with("\r\n") {
-            Line::Context(*line)
+            Line::Context(Cow::Borrowed(*line))
         } else if let Some(line) = line.strip_prefix("-") {
             if no_newline_delete {
                 return Err(ParsePatchError::UnexpectedDeletedLine);
             }
-            Line::Delete(line)
+            Line::Delete(Cow::Borrowed(line))
         } else if let Some(line) = line.strip_prefix("+") {
             if no_newline_insert {
                 return Err(ParsePatchError::UnexpectedInsertLine);
             }
-            Line::Insert(line)
+            Line::Insert(Cow::Borrowed(line))
         } else if line.starts_with(NO_NEWLINE_AT_EOF) {
             let last_line = lines
                 .pop()
@@ -499,15 +504,24 @@ fn hunk_lines<'a, T: Text + ?Sized>(parser: &mut Parser<'a, T>) -> Result<Vec<Li
             match last_line {
                 Line::Context(line) => {
                     no_newline_context = true;
-                    Line::Context(strip_newline(line)?)
+                    Line::Context(match line {
+                        Cow::Borrowed(l) => Cow::Borrowed(strip_newline(l)?),
+                        Cow::Owned(l) => Cow::Owned(strip_newline(l.borrow())?.to_owned()),
+                    })
                 }
                 Line::Delete(line) => {
                     no_newline_delete = true;
-                    Line::Delete(strip_newline(line)?)
+                    Line::Delete(match line {
+                        Cow::Borrowed(l) => Cow::Borrowed(strip_newline(l)?),
+                        Cow::Owned(l) => Cow::Owned(strip_newline(l.borrow())?.to_owned()),
+                    })
                 }
                 Line::Insert(line) => {
                     no_newline_insert = true;
-                    Line::Insert(strip_newline(line)?)
+                    Line::Insert(match line {
+                        Cow::Borrowed(l) => Cow::Borrowed(strip_newline(l)?),
+                        Cow::Owned(l) => Cow::Owned(strip_newline(l.borrow())?.to_owned()),
+                    })
                 }
             }
         } else {
