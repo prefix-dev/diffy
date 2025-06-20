@@ -154,9 +154,9 @@ impl fmt::Display for Patch<'_, str> {
     }
 }
 
-impl<T: ?Sized> fmt::Debug for Patch<'_, T>
+impl<T> fmt::Debug for Patch<'_, T>
 where
-    T: ToOwned<Owned: Debug> + fmt::Debug,
+    T: ?Sized + ToOwned<Owned: Debug> + fmt::Debug + Text,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Patch")
@@ -247,13 +247,17 @@ impl fmt::Display for Filename<'_, str> {
     }
 }
 
-impl<T: ?Sized, O> fmt::Debug for Filename<'_, T>
+impl<T> fmt::Debug for Filename<'_, T>
 where
-    T: ToOwned<Owned = O> + fmt::Debug,
-    O: std::borrow::Borrow<T> + fmt::Debug,
+    T: Debug + ToOwned<Owned: Debug> + ?Sized + Text,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Filename").field(&self.0).finish()
+        let internal_value = self.0.as_ref();
+        let probably_readable = internal_value
+            .as_str()
+            .map(String::from)
+            .unwrap_or_else(|| format!("{:#?}", internal_value));
+        f.debug_tuple("Filename").field(&probably_readable).finish()
     }
 }
 
@@ -272,14 +276,55 @@ pub struct Hunk<'a, T: ?Sized + ToOwned> {
 // constraints.
 impl<T> Debug for Hunk<'_, T>
 where
-    T: Debug + ToOwned<Owned: Debug> + ?Sized,
+    T: Debug + ToOwned<Owned: Debug> + ?Sized + Text,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // We want to have strings in the output whenever possible.
+        let lines = self
+            .lines
+            .iter()
+            .map(|line| match line {
+                Line::Context(cow) => {
+                    let v = cow.as_ref();
+                    Line::Context(Cow::<str>::Owned(
+                        v.as_str()
+                            .map(String::from)
+                            .unwrap_or_else(|| format!("{:#?}", v)),
+                    ))
+                }
+                Line::Delete(cow) => {
+                    let v = cow.as_ref();
+                    Line::Delete(Cow::<str>::Owned(
+                        v.as_str()
+                            .map(String::from)
+                            .unwrap_or_else(|| format!("{:#?}", v)),
+                    ))
+                }
+                Line::Insert(cow) => {
+                    let v = cow.as_ref();
+                    Line::Insert(Cow::<str>::Owned(
+                        v.as_str()
+                            .map(String::from)
+                            .unwrap_or_else(|| format!("{:#?}", v)),
+                    ))
+                }
+            })
+            .collect::<Vec<_>>();
+
+        // NOTE: This is seemingly better way to optionally print strings, since it will respect formatting options.
+        // It would be nice to have similar implementation for lines above, but will suffice for now.
+        let probably_readable_function_context: Box<dyn Debug> =
+            if let Some(s) = self.function_context.and_then(|v| v.as_str()) {
+                Box::new(Some(s))
+            } else {
+                Box::new(self.function_context)
+            };
+
         f.debug_struct("Hunk")
             .field("old_range", &self.old_range)
             .field("new_range", &self.new_range)
-            .field("function_context", &self.function_context)
-            .field("lines", &self.lines)
+            .field("function_context", &probably_readable_function_context)
+            .field("lines", &lines)
             .finish()
     }
 }

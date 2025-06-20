@@ -5,12 +5,20 @@ use crate::{
 use std::{fmt, iter};
 
 /// An error returned when [`apply`]ing a `Patch` fails
-#[derive(Debug)]
-pub struct ApplyError(usize);
+pub struct ApplyError(usize, String);
+
+impl fmt::Debug for ApplyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("ApplyError")
+            .field(&self.0)
+            .field(&self.1)
+            .finish()
+    }
+}
 
 impl fmt::Display for ApplyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "error applying hunk #{}", self.0)
+        write!(f, "error applying hunk #{}: {}", self.0, self.1)
     }
 }
 
@@ -144,7 +152,7 @@ pub fn apply(base_image: &str, patch: &Patch<'_, str>) -> Result<String, ApplyEr
 }
 
 /// Apply a `Patch` to a base image with custom fuzzy matching configuration
-pub fn apply_with_config(
+pub fn apply_with_config<'a>(
     base_image: &str,
     patch: &Patch<'_, str>,
     config: &FuzzyConfig,
@@ -154,7 +162,8 @@ pub fn apply_with_config(
         .collect();
 
     for (i, hunk) in patch.hunks().iter().enumerate() {
-        apply_hunk_with_config(&mut image, hunk, config).map_err(|_| ApplyError(i + 1))?;
+        apply_hunk_with_config(&mut image, hunk, config)
+            .map_err(|_| ApplyError(i + 1, format!("{:#?}", hunk)))?;
     }
 
     Ok(image.into_iter().map(ImageLine::into_inner).collect())
@@ -176,7 +185,8 @@ pub fn apply_bytes_with_config(
         .collect();
 
     for (i, hunk) in patch.hunks().iter().enumerate() {
-        apply_hunk_with_config(&mut image, hunk, config).map_err(|_| ApplyError(i + 1))?;
+        apply_hunk_with_config(&mut image, hunk, config)
+            .map_err(|_| ApplyError(i + 1, format!("{:#?}", hunk)))?;
     }
 
     Ok(image
@@ -576,12 +586,17 @@ mod test {
     #[test]
     fn apply_patch() {
         let (base_image, patch) = load_files("fuzzy");
-        let patch = crate::Patch::from_str(&patch).unwrap();
+        let patch = crate::Patch::from_bytes(&patch.as_bytes()).unwrap();
 
-        println!("Applied: {}", patch);
-        let result = crate::apply(&base_image, &patch).unwrap();
+        println!("Applied: {:#?}", patch);
+        let result = crate::apply_bytes(&base_image.as_bytes(), &patch).unwrap();
         // take the first 50 lines for snapshot testing
-        let result = result.lines().take(50).collect::<Vec<_>>().join("\n");
+        let result = String::from_utf8(result)
+            .unwrap()
+            .lines()
+            .take(50)
+            .collect::<Vec<_>>()
+            .join("\n");
         insta::assert_snapshot!(result);
         println!("Result:\n{}", result);
     }
