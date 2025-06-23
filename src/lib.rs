@@ -221,6 +221,7 @@
 
 mod apply;
 mod diff;
+mod line_end;
 mod merge;
 mod patch;
 mod range;
@@ -231,6 +232,7 @@ pub use apply::{
 };
 pub use diff::{create_patch, create_patch_bytes, DiffOptions};
 pub use merge::{merge, merge_bytes, ConflictStyle, MergeOptions};
+pub use line_end::*;
 pub use patch::{
     patch_from_bytes, patch_from_bytes_with_config, patch_from_str, patch_from_str_with_config,
     Diff, Hunk, HunkRange, HunkRangeStrategy, Line, ParsePatchError, ParserConfig, Patch,
