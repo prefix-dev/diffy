@@ -2,7 +2,7 @@ use super::*;
 use crate::{
     PatchFormatter,
     apply::apply,
-    diff::{Diff, DiffRange},
+    diff::{DiffLine, DiffRange},
     patch::Patch,
     range::Range,
 };
@@ -49,7 +49,7 @@ fn range<'a>(doc: &'a str, offset: &mut usize, text: &str) -> Range<'a, str> {
 
 macro_rules! assert_diff_range {
     ([$($kind:ident($text:literal)),* $(,)?], $solution:ident $(,)?) => {
-        let expected = &[$(Diff::$kind($text)),*];
+        let expected = &[$(DiffLine::$kind($text)),*];
         assert!(
             same_diffs(expected, &$solution),
             concat!("\nexpected={:#?}\nactual={:#?}"),
@@ -57,7 +57,7 @@ macro_rules! assert_diff_range {
         );
     };
     ([$($kind:ident($text:literal)),* $(,)?], $solution:ident, $msg:expr $(,)?) => {
-        let expected = &[$(Diff::$kind($text)),*];
+        let expected = &[$(DiffLine::$kind($text)),*];
         assert!(
             same_diffs(expected, &$solution),
             concat!($msg, "\nexpected={:#?}\nactual={:#?}"),
@@ -66,12 +66,16 @@ macro_rules! assert_diff_range {
     };
 }
 
-fn same_diffs(expected: &[Diff<str>], actual: &[DiffRange<str>]) -> bool {
+fn same_diffs(expected: &[DiffLine<str>], actual: &[DiffRange<str>]) -> bool {
     expected.len() == actual.len()
         && expected.iter().zip(actual).all(|pair| match pair {
-            (Diff::Insert(expected), DiffRange::Insert(actual)) => *expected == actual.as_slice(),
-            (Diff::Delete(expected), DiffRange::Delete(actual)) => *expected == actual.as_slice(),
-            (Diff::Equal(expected), DiffRange::Equal(actual1, actual2)) => {
+            (DiffLine::Insert(expected), DiffRange::Insert(actual)) => {
+                *expected == actual.as_slice()
+            }
+            (DiffLine::Delete(expected), DiffRange::Delete(actual)) => {
+                *expected == actual.as_slice()
+            }
+            (DiffLine::Equal(expected), DiffRange::Equal(actual1, actual2)) => {
                 *expected == actual1.as_slice() && *expected == actual2.as_slice()
             }
             (_, _) => false,
@@ -80,7 +84,7 @@ fn same_diffs(expected: &[Diff<str>], actual: &[DiffRange<str>]) -> bool {
 
 macro_rules! assert_diff {
     ([$($kind:ident($text:literal)),* $(,)?], $solution:ident $(,)?) => {
-        let expected: &[_] = &[$(Diff::$kind($text)),*];
+        let expected: &[_] = &[$(DiffLine::$kind($text)),*];
         assert_eq!(
             expected,
             &$solution[..],
@@ -89,7 +93,7 @@ macro_rules! assert_diff {
         );
     };
     ([$($kind:ident($text:literal)),* $(,)?], $solution:ident, $msg:expr $(,)?) => {
-        let expected: &[_] = &[$(Diff::$kind($text)),*];
+        let expected: &[_] = &[$(DiffLine::$kind($text)),*];
         assert_eq!(
             expected,
             &$solution[..],
@@ -175,13 +179,13 @@ fn test_diff_slice() {
     let a = b"bat";
     let b = b"map";
     let solution = DiffOptions::default().diff_slice(a, b);
-    let solution: Vec<_> = solution.into_iter().map(Diff::from).collect();
-    let expected: Vec<Diff<[u8]>> = vec![
-        Diff::Delete(b"b"),
-        Diff::Insert(b"m"),
-        Diff::Equal(b"a"),
-        Diff::Delete(b"t"),
-        Diff::Insert(b"p"),
+    let solution: Vec<_> = solution.into_iter().map(DiffLine::from).collect();
+    let expected: Vec<DiffLine<[u8]>> = vec![
+        DiffLine::Delete(b"b"),
+        DiffLine::Insert(b"m"),
+        DiffLine::Equal(b"a"),
+        DiffLine::Delete(b"t"),
+        DiffLine::Insert(b"p"),
     ];
     assert_eq!(solution, expected);
 }
@@ -196,7 +200,7 @@ fn test_unicode() {
     assert_eq!(snowman.as_bytes()[..2], comet.as_bytes()[..2]);
 
     let d = diff(snowman, comet);
-    assert_eq!(d, vec![Diff::Delete(snowman), Diff::Insert(comet)]);
+    assert_eq!(d, vec![DiffLine::Delete(snowman), DiffLine::Insert(comet)]);
 }
 
 #[test]

@@ -14,29 +14,29 @@ mod tests;
 // TODO determine if this should be exposed in the public API
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
-enum Diff<'a, T: ?Sized> {
+enum DiffLine<'a, T: ?Sized> {
     Equal(&'a T),
     Delete(&'a T),
     Insert(&'a T),
 }
 
-impl<T: ?Sized> Copy for Diff<'_, T> {}
+impl<T: ?Sized> Copy for DiffLine<'_, T> {}
 
-impl<T: ?Sized> Clone for Diff<'_, T> {
+impl<T: ?Sized> Clone for DiffLine<'_, T> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<'a, T> From<DiffRange<'a, 'a, T>> for Diff<'a, T>
+impl<'a, T> From<DiffRange<'a, 'a, T>> for DiffLine<'a, T>
 where
     T: ?Sized + SliceLike,
 {
     fn from(diff: DiffRange<'a, 'a, T>) -> Self {
         match diff {
-            DiffRange::Equal(range, _) => Diff::Equal(range.as_slice()),
-            DiffRange::Delete(range) => Diff::Delete(range.as_slice()),
-            DiffRange::Insert(range) => Diff::Insert(range.as_slice()),
+            DiffRange::Equal(range, _) => DiffLine::Equal(range.as_slice()),
+            DiffRange::Delete(range) => DiffLine::Delete(range.as_slice()),
+            DiffRange::Insert(range) => DiffLine::Insert(range.as_slice()),
         }
     }
 }
@@ -104,7 +104,7 @@ impl DiffOptions {
 
     // TODO determine if this should be exposed in the public API
     #[allow(dead_code)]
-    fn diff<'a>(&self, original: &'a str, modified: &'a str) -> Vec<Diff<'a, str>> {
+    fn diff<'a>(&self, original: &'a str, modified: &'a str) -> Vec<DiffLine<'a, str>> {
         let solution = myers::diff(original.as_bytes(), modified.as_bytes());
 
         let mut solution = solution
@@ -116,7 +116,7 @@ impl DiffOptions {
             cleanup::compact(&mut solution);
         }
 
-        solution.into_iter().map(Diff::from).collect()
+        solution.into_iter().map(DiffLine::from).collect()
     }
 
     /// Produce a Patch between two texts based on the configured options
@@ -187,7 +187,7 @@ impl Default for DiffOptions {
 
 // TODO determine if this should be exposed in the public API
 #[allow(dead_code)]
-fn diff<'a>(original: &'a str, modified: &'a str) -> Vec<Diff<'a, str>> {
+fn diff<'a>(original: &'a str, modified: &'a str) -> Vec<DiffLine<'a, str>> {
     DiffOptions::default().diff(original, modified)
 }
 
