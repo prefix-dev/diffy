@@ -1,10 +1,10 @@
 use super::*;
 use crate::{
-    PatchFormatter,
     apply::apply,
     diff::{DiffLine, DiffRange},
-    patch::Patch,
+    patch::Diff,
     range::Range,
+    PatchFormatter,
 };
 
 // Helper macros are based off of the ones used in [dissimilar](https://docs.rs/dissimilar)
@@ -337,10 +337,10 @@ macro_rules! assert_patch {
         assert_eq!(patch_str, $expected);
         assert_eq!(patch_bytes, patch_str.as_bytes());
         assert_eq!(patch_bytes, $expected.as_bytes());
-        assert_eq!(Patch::from_str($expected).unwrap(), patch);
-        assert_eq!(Patch::from_str(&patch_str).unwrap(), patch);
-        assert_eq!(Patch::from_bytes($expected.as_bytes()).unwrap(), bpatch);
-        assert_eq!(Patch::from_bytes(&patch_bytes).unwrap(), bpatch);
+        assert_eq!(Diff::from_str($expected).unwrap(), patch);
+        assert_eq!(Diff::from_str(&patch_str).unwrap(), patch);
+        assert_eq!(Diff::from_bytes($expected.as_bytes()).unwrap(), bpatch);
+        assert_eq!(Diff::from_bytes(&patch_bytes).unwrap(), bpatch);
         assert_eq!(apply($old, &patch).unwrap(), $new);
         assert_eq!(
             crate::apply_bytes($old.as_bytes(), &bpatch).unwrap(),
@@ -614,7 +614,7 @@ void Chunk_copy(Chunk *src, size_t src_start, Chunk *dst, size_t dst_start, size
 +    memcpy(dst->data + dst_start, src->data + src_start, n);
  }
 ";
-    let git_patch = Patch::from_str(expected_git).unwrap();
+    let git_patch = Diff::from_str(expected_git).unwrap();
     assert_eq!(apply(original, &git_patch).unwrap(), a);
 
     let expected_diffy = "\
@@ -760,7 +760,7 @@ Second:
     until I find a more perfect Ideal.
 ";
 
-    let patch = Patch::from_str(patch).unwrap();
+    let patch = Diff::from_str(patch).unwrap();
 
     let now = std::time::Instant::now();
 

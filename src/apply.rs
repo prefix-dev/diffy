@@ -1,5 +1,5 @@
 use crate::{
-    patch::{Hunk, Line, Patch},
+    patch::{Diff, Hunk, Line},
     utils::{LineIter, Text},
 };
 use std::{fmt, iter};
@@ -108,7 +108,11 @@ impl FuzzyComparable for [u8] {
             s1.similarity(s2, config)
         } else {
             // Fall back to exact byte comparison
-            if self == other { 1.0 } else { 0.0 }
+            if self == other {
+                1.0
+            } else {
+                0.0
+            }
         }
     }
 }
@@ -147,14 +151,14 @@ impl<T: ?Sized> Clone for ImageLine<'_, T> {
 }
 
 /// Apply a `Patch` to a base image with default fuzzy matching
-pub fn apply(base_image: &str, patch: &Patch<'_, str>) -> Result<String, ApplyError> {
+pub fn apply(base_image: &str, patch: &Diff<'_, str>) -> Result<String, ApplyError> {
     apply_with_config(base_image, patch, &FuzzyConfig::default())
 }
 
 /// Apply a `Patch` to a base image with custom fuzzy matching configuration
-pub fn apply_with_config<'a>(
+pub fn apply_with_config(
     base_image: &str,
-    patch: &Patch<'_, str>,
+    patch: &Diff<'_, str>,
     config: &FuzzyConfig,
 ) -> Result<String, ApplyError> {
     let mut image: Vec<_> = LineIter::new(base_image)
@@ -170,14 +174,14 @@ pub fn apply_with_config<'a>(
 }
 
 /// Apply a non-utf8 `Patch` to a base image with default fuzzy matching
-pub fn apply_bytes(base_image: &[u8], patch: &Patch<'_, [u8]>) -> Result<Vec<u8>, ApplyError> {
+pub fn apply_bytes(base_image: &[u8], patch: &Diff<'_, [u8]>) -> Result<Vec<u8>, ApplyError> {
     apply_bytes_with_config(base_image, patch, &FuzzyConfig::default())
 }
 
 /// Apply a non-utf8 `Patch` to a base image with custom fuzzy matching configuration
 pub fn apply_bytes_with_config(
     base_image: &[u8],
-    patch: &Patch<'_, [u8]>,
+    patch: &Diff<'_, [u8]>,
     config: &FuzzyConfig,
 ) -> Result<Vec<u8>, ApplyError> {
     let mut image: Vec<_> = LineIter::new(base_image)
@@ -586,10 +590,10 @@ mod test {
     #[test]
     fn apply_patch() {
         let (base_image, patch) = load_files("fuzzy");
-        let patch = crate::Patch::from_bytes(&patch.as_bytes()).unwrap();
+        let patch = crate::Diff::from_bytes(patch.as_bytes()).unwrap();
 
         println!("Applied: {:#?}", patch);
-        let result = crate::apply_bytes(&base_image.as_bytes(), &patch).unwrap();
+        let result = crate::apply_bytes(base_image.as_bytes(), &patch).unwrap();
         // take the first 50 lines for snapshot testing
         let result = String::from_utf8(result)
             .unwrap()

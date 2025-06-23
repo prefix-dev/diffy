@@ -1,4 +1,4 @@
-use super::{Hunk, Line, NO_NEWLINE_AT_EOF, Patch};
+use super::{Diff, Hunk, Line, NO_NEWLINE_AT_EOF};
 use nu_ansi_term::{Color, Style};
 use std::{
     fmt::{Display, Formatter, Result},
@@ -74,13 +74,13 @@ impl PatchFormatter {
     }
 
     /// Returns a `Display` impl which can be used to print a Patch
-    pub fn fmt_patch<'a>(&'a self, patch: &'a Patch<'a, str>) -> impl Display + 'a {
+    pub fn fmt_patch<'a>(&'a self, patch: &'a Diff<'a, str>) -> impl Display + 'a {
         PatchDisplay { f: self, patch }
     }
 
     pub fn write_patch_into<T: ToOwned + AsRef<[u8]> + ?Sized, W: io::Write>(
         &self,
-        patch: &Patch<'_, T>,
+        patch: &Diff<'_, T>,
         w: W,
     ) -> io::Result<()> {
         PatchDisplay { f: self, patch }.write_into(w)
@@ -119,7 +119,7 @@ impl Default for PatchFormatter {
 
 struct PatchDisplay<'a, T: ToOwned + ?Sized> {
     f: &'a PatchFormatter,
-    patch: &'a Patch<'a, T>,
+    patch: &'a Diff<'a, T>,
 }
 
 impl<T: ToOwned + AsRef<[u8]> + ?Sized> PatchDisplay<'_, T> {

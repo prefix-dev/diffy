@@ -14,9 +14,11 @@ use crate::utils::Text;
 
 const NO_NEWLINE_AT_EOF: &str = "\\ No newline at end of file";
 
+pub type Patch<'a, T> = Vec<Diff<'a, T>>;
+
 /// Representation of all the differences between two files
 #[derive(PartialEq, PartialOrd, Ord, Eq)]
-pub struct Patch<'a, T: ToOwned + ?Sized> {
+pub struct Diff<'a, T: ToOwned + ?Sized> {
     // TODO GNU patch is able to parse patches without filename headers.
     // This should be changed to an `Option` type to reflect this instead of setting this to ""
     // when they're missing
@@ -25,7 +27,7 @@ pub struct Patch<'a, T: ToOwned + ?Sized> {
     hunks: Vec<Hunk<'a, T>>,
 }
 
-impl<'a, T: Text + ToOwned + ?Sized> Patch<'a, T> {
+impl<'a, T: Text + ToOwned + ?Sized> Diff<'a, T> {
     pub(crate) fn new<O, M>(
         original: Option<O>,
         modified: Option<M>,
@@ -59,9 +61,9 @@ impl<'a, T: Text + ToOwned + ?Sized> Patch<'a, T> {
         &self.hunks
     }
 
-    pub fn reverse(&self) -> Patch<'_, T> {
+    pub fn reverse(&self) -> Diff<'_, T> {
         let hunks = self.hunks.iter().map(Hunk::reverse).collect();
-        Patch {
+        Diff {
             original: self.modified.clone(),
             modified: self.original.clone(),
             hunks,
@@ -69,7 +71,7 @@ impl<'a, T: Text + ToOwned + ?Sized> Patch<'a, T> {
     }
 }
 
-impl<T: AsRef<[u8]> + ToOwned + ?Sized> Patch<'_, T> {
+impl<T: AsRef<[u8]> + ToOwned + ?Sized> Diff<'_, T> {
     /// Convert a `Patch` into bytes
     ///
     /// This is the equivalent of the `to_string` function but for
@@ -83,29 +85,29 @@ impl<T: AsRef<[u8]> + ToOwned + ?Sized> Patch<'_, T> {
     }
 }
 
-pub fn patches_from_str(input: &str) -> Result<Vec<Patch<'_, str>>, ParsePatchError> {
+pub fn patch_from_str(input: &str) -> Result<Patch<'_, str>, ParsePatchError> {
     parse::parse_multiple(input)
 }
 
-pub fn patches_from_str_with_config(
+pub fn patch_from_str_with_config(
     input: &str,
     config: ParserConfig,
-) -> Result<Vec<Patch<'_, str>>, ParsePatchError> {
+) -> Result<Patch<'_, str>, ParsePatchError> {
     parse::parse_multiple_with_config(input, config)
 }
 
-pub fn patches_from_bytes(input: &[u8]) -> Result<Vec<Patch<'_, [u8]>>, ParsePatchError> {
+pub fn patch_from_bytes(input: &[u8]) -> Result<Patch<'_, [u8]>, ParsePatchError> {
     parse::parse_bytes_multiple(input)
 }
 
-pub fn patches_from_bytes_with_config(
+pub fn patch_from_bytes_with_config(
     input: &[u8],
     config: ParserConfig,
-) -> Result<Vec<Patch<'_, [u8]>>, ParsePatchError> {
+) -> Result<Patch<'_, [u8]>, ParsePatchError> {
     parse::parse_bytes_multiple_with_config(input, config)
 }
 
-impl<'a> Patch<'a, str> {
+impl<'a> Diff<'a, str> {
     /// Parse a `Patch` from a string
     ///
     /// ```
@@ -126,19 +128,19 @@ impl<'a> Patch<'a, str> {
     /// let patch = Patch::from_str(s).unwrap();
     /// ```
     #[allow(clippy::should_implement_trait)]
-    pub fn from_str(s: &'a str) -> Result<Patch<'a, str>, ParsePatchError> {
+    pub fn from_str(s: &'a str) -> Result<Diff<'a, str>, ParsePatchError> {
         parse::parse(s)
     }
 }
 
-impl<'a> Patch<'a, [u8]> {
+impl<'a> Diff<'a, [u8]> {
     /// Parse a `Patch` from bytes
-    pub fn from_bytes(s: &'a [u8]) -> Result<Patch<'a, [u8]>, ParsePatchError> {
+    pub fn from_bytes(s: &'a [u8]) -> Result<Diff<'a, [u8]>, ParsePatchError> {
         parse::parse_bytes(s)
     }
 }
 
-impl<T: ToOwned + ?Sized> Clone for Patch<'_, T> {
+impl<T: ToOwned + ?Sized> Clone for Diff<'_, T> {
     fn clone(&self) -> Self {
         Self {
             original: self.original.clone(),
@@ -148,13 +150,13 @@ impl<T: ToOwned + ?Sized> Clone for Patch<'_, T> {
     }
 }
 
-impl fmt::Display for Patch<'_, str> {
+impl fmt::Display for Diff<'_, str> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", PatchFormatter::new().fmt_patch(self))
     }
 }
 
-impl<T> fmt::Debug for Patch<'_, T>
+impl<T> fmt::Debug for Diff<'_, T>
 where
     T: ?Sized + ToOwned<Owned: Debug> + fmt::Debug + Text,
 {

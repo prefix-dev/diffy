@@ -1,8 +1,8 @@
 //! Parse a Patch
 
-use super::{ESCAPED_CHARS_BYTES, Hunk, HunkRange, Line, NO_NEWLINE_AT_EOF};
+use super::{Hunk, HunkRange, Line, ESCAPED_CHARS_BYTES, NO_NEWLINE_AT_EOF};
 use crate::{
-    patch::Patch,
+    patch::Diff,
     utils::{LineIter, Text},
 };
 use std::{
@@ -132,19 +132,16 @@ impl<'a, T: Text + ?Sized> Parser<'a, T> {
     }
 }
 
-pub fn parse_multiple(input: &str) -> Result<Vec<Patch<'_, str>>> {
+pub fn parse_multiple(input: &str) -> Result<Vec<Diff<'_, str>>> {
     parse_multiple_with_config(input, ParserConfig::default())
 }
 
-pub fn parse_multiple_with_config(
-    input: &str,
-    config: ParserConfig,
-) -> Result<Vec<Patch<'_, str>>> {
+pub fn parse_multiple_with_config(input: &str, config: ParserConfig) -> Result<Vec<Diff<'_, str>>> {
     let mut parser = Parser::with_config(input, config);
     let mut patches = vec![];
     loop {
         match (patch_header(&mut parser), hunks(&mut parser)) {
-            (Ok(header), Ok(hunks)) => patches.push(Patch::new(
+            (Ok(header), Ok(hunks)) => patches.push(Diff::new(
                 header.0.map(convert_cow_to_str),
                 header.1.map(convert_cow_to_str),
                 hunks,
@@ -158,31 +155,31 @@ pub fn parse_multiple_with_config(
     Ok(patches)
 }
 
-pub fn parse(input: &str) -> Result<Patch<'_, str>> {
+pub fn parse(input: &str) -> Result<Diff<'_, str>> {
     let mut parser = Parser::new(input);
     let header = patch_header(&mut parser)?;
     let hunks = hunks(&mut parser)?;
 
-    Ok(Patch::new(
+    Ok(Diff::new(
         header.0.map(convert_cow_to_str),
         header.1.map(convert_cow_to_str),
         hunks,
     ))
 }
 
-pub fn parse_bytes_multiple(input: &[u8]) -> Result<Vec<Patch<'_, [u8]>>> {
+pub fn parse_bytes_multiple(input: &[u8]) -> Result<Vec<Diff<'_, [u8]>>> {
     parse_bytes_multiple_with_config(input, ParserConfig::default())
 }
 
 pub fn parse_bytes_multiple_with_config(
     input: &[u8],
     config: ParserConfig,
-) -> Result<Vec<Patch<'_, [u8]>>> {
+) -> Result<Vec<Diff<'_, [u8]>>> {
     let mut parser = Parser::with_config(input, config);
     let mut patches = vec![];
     loop {
         match (patch_header(&mut parser), hunks(&mut parser)) {
-            (Ok(header), Ok(hunks)) => patches.push(Patch::new(header.0, header.1, hunks)),
+            (Ok(header), Ok(hunks)) => patches.push(Diff::new(header.0, header.1, hunks)),
             (Ok((None, None)), Err(_)) | (Err(_), Err(_)) => break,
             (Ok(_), Err(e)) | (Err(e), Ok(_)) => {
                 return Err(e);
@@ -192,12 +189,12 @@ pub fn parse_bytes_multiple_with_config(
     Ok(patches)
 }
 
-pub fn parse_bytes(input: &[u8]) -> Result<Patch<'_, [u8]>> {
+pub fn parse_bytes(input: &[u8]) -> Result<Diff<'_, [u8]>> {
     let mut parser = Parser::new(input);
     let header = patch_header(&mut parser)?;
     let hunks = hunks(&mut parser)?;
 
-    Ok(Patch::new(header.0, header.1, hunks))
+    Ok(Diff::new(header.0, header.1, hunks))
 }
 
 // This is only used when the type originated as a utf8 string
@@ -545,7 +542,7 @@ fn strip_newline<T: Text + ?Sized>(s: &T) -> Result<&T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::patch::parse::{HunkRangeStrategy, ParserConfig, parse_multiple_with_config};
+    use crate::patch::parse::{parse_multiple_with_config, HunkRangeStrategy, ParserConfig};
 
     use super::{parse, parse_bytes};
 
