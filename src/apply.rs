@@ -375,11 +375,7 @@ where
         }
 
         for (pre_line, image_line) in pre_image_lines.iter().zip(image_lines.iter()) {
-            // For non-ignored lines, check similarity
-            let similarity = pre_line.similarity(*image_line, config);
-
-            // Require high similarity for non-ignored lines
-            if similarity < 0.8 {
+            if !pre_line.fuzzy_eq(*image_line, config) {
                 return false;
             }
         }
@@ -450,11 +446,8 @@ where
             continue; // Skip this context line
         }
 
-        // For non-ignored lines, check similarity
-        let similarity = pre_line.similarity(*image_line, config);
-
         // Require high similarity for non-ignored lines
-        if similarity < 0.8 {
+        if !pre_line.fuzzy_eq(*image_line, config) {
             return false;
         }
     }
