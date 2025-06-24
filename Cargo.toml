@@ -19,3 +19,4 @@ thiserror = "2.0.12"
 
 [dev-dependencies]
 insta = { version = "1.43.1", features = ["glob"] }
+rstest = "0.25.0"

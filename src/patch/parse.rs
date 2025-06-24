@@ -1,14 +1,12 @@
 //! Parse a Patch
 
-use super::{Hunk, HunkRange, Line, ESCAPED_CHARS_BYTES, NO_NEWLINE_AT_EOF};
+use super::{ESCAPED_CHARS_BYTES, Hunk, HunkRange, Line, NO_NEWLINE_AT_EOF};
 use crate::{
+    LineEnd,
     patch::Diff,
     utils::{LineIter, Text},
 };
-use std::{
-    borrow::{Borrow, Cow},
-    fmt,
-};
+use std::{borrow::Cow, fmt};
 
 type Result<T, E = ParsePatchError> = std::result::Result<T, E>;
 
@@ -122,11 +120,11 @@ impl<'a, T: Text + ?Sized> Parser<'a, T> {
         }
     }
 
-    fn peek(&mut self) -> Option<&&'a T> {
+    fn peek(&mut self) -> Option<&(&'a T, Option<LineEnd>)> {
         self.lines.peek()
     }
 
-    fn next(&mut self) -> Result<&'a T> {
+    fn next(&mut self) -> Result<(&'a T, Option<LineEnd>)> {
         let line = self.lines.next().ok_or(ParsePatchError::UnexpectedEof)?;
         Ok(line)
     }
@@ -141,13 +139,13 @@ pub fn parse_multiple_with_config(input: &str, config: ParserConfig) -> Result<V
     let mut patches = vec![];
     loop {
         match (patch_header(&mut parser), hunks(&mut parser)) {
-            (Ok(header), Ok(hunks)) => patches.push(Diff::new(
-                header.0.map(convert_cow_to_str),
-                header.1.map(convert_cow_to_str),
-                hunks,
-            )),
-            (Ok((None, None)), Err(_)) | (Err(_), Err(_)) => break,
-            (Ok(_), Err(e)) | (Err(e), Ok(_)) => {
+            (Ok(header), Ok(hunks)) => {
+                let original = header.0.map(|(line, _end)| convert_cow_to_str(line));
+                let modified = header.1.map(|(line, _end)| convert_cow_to_str(line));
+                patches.push(Diff::new(original, modified, hunks))
+            }
+            (Ok((None, None)), Err(_)) => break,
+            (Ok(_), Err(e)) | (Err(e), _) => {
                 return Err(e);
             }
         }
@@ -160,11 +158,10 @@ pub fn parse(input: &str) -> Result<Diff<'_, str>> {
     let header = patch_header(&mut parser)?;
     let hunks = hunks(&mut parser)?;
 
-    Ok(Diff::new(
-        header.0.map(convert_cow_to_str),
-        header.1.map(convert_cow_to_str),
-        hunks,
-    ))
+    let original = header.0.map(|(line, _end)| convert_cow_to_str(line));
+    let modified = header.1.map(|(line, _end)| convert_cow_to_str(line));
+
+    Ok(Diff::new(original, modified, hunks))
 }
 
 pub fn parse_bytes_multiple(input: &[u8]) -> Result<Vec<Diff<'_, [u8]>>> {
@@ -179,7 +176,12 @@ pub fn parse_bytes_multiple_with_config(
     let mut patches = vec![];
     loop {
         match (patch_header(&mut parser), hunks(&mut parser)) {
-            (Ok(header), Ok(hunks)) => patches.push(Diff::new(header.0, header.1, hunks)),
+            (Ok(header), Ok(hunks)) => {
+                let original = header.0.map(|(line, _end)| line);
+                let modified = header.1.map(|(line, _end)| line);
+
+                patches.push(Diff::new(original, modified, hunks))
+            }
             (Ok((None, None)), Err(_)) | (Err(_), Err(_)) => break,
             (Ok(_), Err(e)) | (Err(e), Ok(_)) => {
                 return Err(e);
@@ -194,7 +196,10 @@ pub fn parse_bytes(input: &[u8]) -> Result<Diff<'_, [u8]>> {
     let header = patch_header(&mut parser)?;
     let hunks = hunks(&mut parser)?;
 
-    Ok(Diff::new(header.0, header.1, hunks))
+    let original = header.0.map(|(line, _end)| line);
+    let modified = header.1.map(|(line, _end)| line);
+
+    Ok(Diff::new(original, modified, hunks))
 }
 
 // This is only used when the type originated as a utf8 string
@@ -208,13 +213,16 @@ fn convert_cow_to_str(cow: Cow<'_, [u8]>) -> Cow<'_, str> {
 #[allow(clippy::type_complexity)]
 fn patch_header<'a, T: Text + ToOwned + ?Sized>(
     parser: &mut Parser<'a, T>,
-) -> Result<(Option<Cow<'a, [u8]>>, Option<Cow<'a, [u8]>>)> {
+) -> Result<(
+    Option<(Cow<'a, [u8]>, Option<LineEnd>)>,
+    Option<(Cow<'a, [u8]>, Option<LineEnd>)>,
+)> {
     skip_header_preamble(parser)?;
 
     let mut filename1 = None;
     let mut filename2 = None;
 
-    while let Some(line) = parser.peek() {
+    while let Some((line, _end)) = parser.peek() {
         if line.starts_with("--- ") {
             if filename1.is_some() {
                 return Err(ParsePatchError::HeaderMultipleLines(
@@ -238,7 +246,7 @@ fn patch_header<'a, T: Text + ToOwned + ?Sized>(
 // Skip to the first filename header ("--- " or "+++ ") or hunk line,
 // skipping any preamble lines like "diff --git", etc.
 fn skip_header_preamble<T: Text + ?Sized>(parser: &mut Parser<'_, T>) -> Result<()> {
-    while let Some(line) = parser.peek() {
+    while let Some((line, _end)) = parser.peek() {
         if line.starts_with("--- ") | line.starts_with("+++ ") | line.starts_with("@@ ") {
             break;
         }
@@ -250,11 +258,11 @@ fn skip_header_preamble<T: Text + ?Sized>(parser: &mut Parser<'_, T>) -> Result<
 
 fn parse_filename<'a, T: Text + ToOwned + ?Sized>(
     prefix: &str,
-    line: &'a T,
-) -> Result<Cow<'a, [u8]>> {
-    let line = line
-        .strip_prefix(prefix)
-        .ok_or(ParsePatchError::UnableToParseFilename)?;
+    l: (&'a T, Option<LineEnd>),
+) -> Result<(Cow<'a, [u8]>, Option<LineEnd>)> {
+    let line =
+        l.0.strip_prefix(prefix)
+            .ok_or(ParsePatchError::UnableToParseFilename)?;
 
     let filename = if let Some((filename, _)) = line.split_at_exclusive("\t") {
         filename
@@ -263,7 +271,7 @@ fn parse_filename<'a, T: Text + ToOwned + ?Sized>(
     } else if let Some((filename, _)) = line.split_at_exclusive("\n") {
         filename
     } else {
-        return Err(ParsePatchError::UnterminatedFilename);
+        line
     };
 
     let filename = if let Some(quoted) = is_quoted(filename) {
@@ -272,7 +280,7 @@ fn parse_filename<'a, T: Text + ToOwned + ?Sized>(
         unescaped_filename(filename)?
     };
 
-    Ok(filename)
+    Ok((filename, l.1))
 }
 
 fn is_quoted<T: Text + ?Sized>(s: &T) -> Option<&T> {
@@ -361,16 +369,15 @@ fn hunks<'a, T: Text + ?Sized + ToOwned>(parser: &mut Parser<'a, T>) -> Result<V
 fn tolerance_level<T: Text + ?Sized + ToOwned>(lines: &[Line<'_, T>]) -> (usize, bool) {
     let mut tolerance = 0;
     let mut revlines = lines.iter().rev();
-    while let Some(Line::Context(l)) = revlines.next() {
-        if l.as_bytes() == b"\n" || l.as_bytes() == b"\r\n" {
+    while let Some(Line::Context((_, end))) = revlines.next() {
+        if end.is_some() {
             tolerance += 1;
         } else {
             break;
         }
     }
 
-    let line_ends_with_newline =
-        matches!(revlines.next(), Some(Line::Context(l)) if l.ends_with("\n"));
+    let line_ends_with_newline = matches!(revlines.next(), Some(Line::Context((_, Some(_)))));
 
     (tolerance, line_ends_with_newline)
 }
@@ -398,9 +405,7 @@ fn hunk<'a, T: Text + ?Sized + ToOwned>(parser: &mut Parser<'a, T>) -> Result<Hu
                 .iter()
                 .rev()
                 .take_while(|l| match *l {
-                    Line::Context(c) => {
-                        [b"\r\n".as_slice(), b"\n".as_slice()].contains(&c.as_bytes())
-                    }
+                    Line::Context(c) => c.0.len() == 0 && c.1.is_some(),
                     _ => false,
                 })
                 .count();
@@ -422,8 +427,11 @@ fn hunk<'a, T: Text + ?Sized + ToOwned>(parser: &mut Parser<'a, T>) -> Result<Hu
     Ok(Hunk::new(range1, range2, function_context, lines))
 }
 
-fn hunk_header<T: Text + ?Sized>(input: &T) -> Result<(HunkRange, HunkRange, Option<&T>)> {
-    let input = input
+type HunkHeader<'a, T> = (HunkRange, HunkRange, Option<(&'a T, Option<LineEnd>)>);
+
+fn hunk_header<T: Text + ?Sized>(oinput: (&T, Option<LineEnd>)) -> Result<HunkHeader<T>> {
+    let input = oinput
+        .0
         .strip_prefix("@@ ")
         .ok_or(ParsePatchError::HunkHeader)?;
 
@@ -445,7 +453,7 @@ fn hunk_header<T: Text + ?Sized>(input: &T) -> Result<(HunkRange, HunkRange, Opt
             .strip_prefix("+")
             .ok_or(ParsePatchError::HunkHeader)?,
     )?;
-    Ok((range1, range2, function_context))
+    Ok((range1, range2, function_context.map(|fc| (fc, oinput.1))))
 }
 
 fn range<T: Text + ?Sized>(s: &T) -> Result<HunkRange> {
@@ -470,55 +478,45 @@ fn hunk_lines<'a, T: Text + ?Sized + ToOwned>(
     let mut no_newline_insert = false;
 
     while let Some(line) = parser.peek() {
-        let line = if line.starts_with("@")
-            || line.starts_with("diff ")
-            || line.starts_with("-- ")
-            || line.starts_with("--\n")
-            || line.starts_with("--\r\n")
-            || line.starts_with("--- ")
+        let line = if line.0.starts_with("@")
+            || line.0.starts_with("diff ")
+            || line.0.starts_with("-- ")
+            || (line.0.starts_with("--") && line.0.len() == 2)
+            || line.0.starts_with("--- ")
         {
             break;
         } else if no_newline_context {
             return Err(ParsePatchError::ExpectedEndOfHunk);
-        } else if let Some(line) = line.strip_prefix(" ") {
-            Line::Context(Cow::Borrowed(line))
-        } else if line.starts_with("\n") || line.starts_with("\r\n") {
-            Line::Context(Cow::Borrowed(*line))
-        } else if let Some(line) = line.strip_prefix("-") {
+        } else if let Some(l) = line.0.strip_prefix(" ") {
+            Line::Context((l, line.1))
+        } else if line.0.len() == 0 && line.1.is_some() {
+            Line::Context(*line)
+        } else if let Some(l) = line.0.strip_prefix("-") {
             if no_newline_delete {
                 return Err(ParsePatchError::UnexpectedDeletedLine);
             }
-            Line::Delete(Cow::Borrowed(line))
-        } else if let Some(line) = line.strip_prefix("+") {
+            Line::Delete((l, line.1))
+        } else if let Some(l) = line.0.strip_prefix("+") {
             if no_newline_insert {
                 return Err(ParsePatchError::UnexpectedInsertLine);
             }
-            Line::Insert(Cow::Borrowed(line))
-        } else if line.starts_with(NO_NEWLINE_AT_EOF) {
+            Line::Insert((l, line.1))
+        } else if line.0.starts_with(NO_NEWLINE_AT_EOF) {
             let last_line = lines
                 .pop()
                 .ok_or(ParsePatchError::UnexpectedNoNewlineAtEOF)?;
             match last_line {
-                Line::Context(line) => {
+                Line::Context((line, _end)) => {
                     no_newline_context = true;
-                    Line::Context(match line {
-                        Cow::Borrowed(l) => Cow::Borrowed(strip_newline(l)?),
-                        Cow::Owned(l) => Cow::Owned(strip_newline(l.borrow())?.to_owned()),
-                    })
+                    Line::Context((line, None))
                 }
-                Line::Delete(line) => {
+                Line::Delete((line, _end)) => {
                     no_newline_delete = true;
-                    Line::Delete(match line {
-                        Cow::Borrowed(l) => Cow::Borrowed(strip_newline(l)?),
-                        Cow::Owned(l) => Cow::Owned(strip_newline(l.borrow())?.to_owned()),
-                    })
+                    Line::Delete((line, None))
                 }
-                Line::Insert(line) => {
+                Line::Insert((line, _end)) => {
                     no_newline_insert = true;
-                    Line::Insert(match line {
-                        Cow::Borrowed(l) => Cow::Borrowed(strip_newline(l)?),
-                        Cow::Owned(l) => Cow::Owned(strip_newline(l.borrow())?.to_owned()),
-                    })
+                    Line::Insert((line, None))
                 }
             }
         } else {
@@ -532,17 +530,9 @@ fn hunk_lines<'a, T: Text + ?Sized + ToOwned>(
     Ok(lines)
 }
 
-fn strip_newline<T: Text + ?Sized>(s: &T) -> Result<&T> {
-    if let Some(stripped) = s.strip_suffix("\n") {
-        Ok(stripped)
-    } else {
-        Err(ParsePatchError::MissingNewline)
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::patch::parse::{parse_multiple_with_config, HunkRangeStrategy, ParserConfig};
+    use crate::patch::parse::{HunkRangeStrategy, ParserConfig, parse_multiple_with_config};
 
     use super::{parse, parse_bytes};
 

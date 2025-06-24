@@ -10,14 +10,14 @@ use std::{
     ops,
 };
 
-use crate::utils::Text;
+use crate::{LineEnd, utils::Text};
 
 const NO_NEWLINE_AT_EOF: &str = "\\ No newline at end of file";
 
 pub type Patch<'a, T> = Vec<Diff<'a, T>>;
 
 /// Representation of all the differences between two files
-#[derive(PartialEq, PartialOrd, Ord, Eq)]
+#[derive(Clone, PartialEq, PartialOrd, Ord, Eq)]
 pub struct Diff<'a, T: ToOwned + ?Sized> {
     // TODO GNU patch is able to parse patches without filename headers.
     // This should be changed to an `Option` type to reflect this instead of setting this to ""
@@ -111,7 +111,7 @@ impl<'a> Diff<'a, str> {
     /// Parse a `Patch` from a string
     ///
     /// ```
-    /// use diffy::Patch;
+    /// use diffy::Diff;
     ///
     /// let s = "\
     /// --- a/ideals
@@ -125,7 +125,7 @@ impl<'a> Diff<'a, str> {
     /// +    I will protect those who cannot protect themselves.
     /// ";
     ///
-    /// let patch = Patch::from_str(s).unwrap();
+    /// let patch = Diff::from_str(s).unwrap();
     /// ```
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &'a str) -> Result<Diff<'a, str>, ParsePatchError> {
@@ -137,16 +137,6 @@ impl<'a> Diff<'a, [u8]> {
     /// Parse a `Patch` from bytes
     pub fn from_bytes(s: &'a [u8]) -> Result<Diff<'a, [u8]>, ParsePatchError> {
         parse::parse_bytes(s)
-    }
-}
-
-impl<T: ToOwned + ?Sized> Clone for Diff<'_, T> {
-    fn clone(&self) -> Self {
-        Self {
-            original: self.original.clone(),
-            modified: self.modified.clone(),
-            hunks: self.hunks.clone(),
-        }
     }
 }
 
@@ -264,12 +254,12 @@ where
 }
 
 /// Represents a group of differing lines between two files
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Hunk<'a, T: ?Sized + ToOwned> {
     old_range: HunkRange,
     new_range: HunkRange,
 
-    function_context: Option<&'a T>,
+    function_context: Option<(&'a T, Option<LineEnd>)>,
 
     lines: Vec<Line<'a, T>>,
 }
@@ -278,56 +268,28 @@ pub struct Hunk<'a, T: ?Sized + ToOwned> {
 // constraints.
 impl<T> Debug for Hunk<'_, T>
 where
-    T: Debug + ToOwned<Owned: Debug> + ?Sized + Text,
+    T: Debug + ToOwned + ?Sized + Text,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // We want to have strings in the output whenever possible.
-        let lines = self
-            .lines
-            .iter()
-            .map(|line| match line {
-                Line::Context(cow) => {
-                    let v = cow.as_ref();
-                    Line::Context(Cow::<str>::Owned(
-                        v.as_str()
-                            .map(String::from)
-                            .unwrap_or_else(|| format!("{:#?}", v)),
-                    ))
-                }
-                Line::Delete(cow) => {
-                    let v = cow.as_ref();
-                    Line::Delete(Cow::<str>::Owned(
-                        v.as_str()
-                            .map(String::from)
-                            .unwrap_or_else(|| format!("{:#?}", v)),
-                    ))
-                }
-                Line::Insert(cow) => {
-                    let v = cow.as_ref();
-                    Line::Insert(Cow::<str>::Owned(
-                        v.as_str()
-                            .map(String::from)
-                            .unwrap_or_else(|| format!("{:#?}", v)),
-                    ))
-                }
-            })
-            .collect::<Vec<_>>();
+        let mut fmt = f.debug_struct("Hunk");
+        fmt.field("old_range", &self.old_range);
+        fmt.field("new_range", &self.new_range);
 
-        // NOTE: This is seemingly better way to optionally print strings, since it will respect formatting options.
-        // It would be nice to have similar implementation for lines above, but will suffice for now.
-        let probably_readable_function_context: Box<dyn Debug> =
-            if let Some(s) = self.function_context.and_then(|v| v.as_str()) {
-                Box::new(Some(s))
+        if let Some((line, ending)) = self.function_context {
+            let mut l = line.as_bytes().to_owned();
+            let e: &[u8] = ending.map(|e| e.into()).unwrap_or(&[]);
+            l.extend(e);
+
+            if let Ok(s) = std::str::from_utf8(l.as_slice()) {
+                fmt.field("function_context", &Some(s));
             } else {
-                Box::new(self.function_context)
-            };
+                fmt.field("function_context", &Some(l));
+            }
+        } else {
+            fmt.field("function_context", &None::<&str>);
+        }
 
-        f.debug_struct("Hunk")
-            .field("old_range", &self.old_range)
-            .field("new_range", &self.new_range)
-            .field("function_context", &probably_readable_function_context)
-            .field("lines", &lines)
-            .finish()
+        fmt.field("lines", &self.lines).finish()
     }
 }
 
@@ -343,7 +305,7 @@ impl<'a, T: Text + ?Sized + ToOwned> Hunk<'a, T> {
     pub(crate) fn new(
         old_range: HunkRange,
         new_range: HunkRange,
-        function_context: Option<&'a T>,
+        function_context: Option<(&'a T, Option<LineEnd>)>,
         lines: Vec<Line<'a, T>>,
     ) -> Self {
         Self {
@@ -365,7 +327,7 @@ impl<'a, T: Text + ?Sized + ToOwned> Hunk<'a, T> {
     }
 
     /// Returns the function context (if any) for the hunk
-    pub fn function_context(&self) -> Option<&T> {
+    pub fn function_context(&self) -> Option<(&T, Option<LineEnd>)> {
         self.function_context
     }
 
@@ -383,17 +345,6 @@ impl<'a, T: Text + ?Sized + ToOwned> Hunk<'a, T> {
             new_range: self.old_range,
             function_context: self.function_context,
             lines,
-        }
-    }
-}
-
-impl<T: ?Sized + ToOwned> Clone for Hunk<'_, T> {
-    fn clone(&self) -> Self {
-        Self {
-            old_range: self.old_range,
-            new_range: self.new_range,
-            function_context: self.function_context,
-            lines: self.lines.clone(),
         }
     }
 }
@@ -452,45 +403,71 @@ impl fmt::Display for HunkRange {
 ///
 /// A `Line` contains the terminating newline character `\n` unless it is the final
 /// line in the file and the file does not end with a newline character.
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
-pub enum Line<'a, T: ?Sized + ToOwned> {
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Line<'a, T: ?Sized> {
     /// A line providing context in the diff which is present in both the old and new file
-    Context(Cow<'a, T>),
+    Context((&'a T, Option<LineEnd>)),
     /// A line deleted from the old file
-    Delete(Cow<'a, T>),
+    Delete((&'a T, Option<LineEnd>)),
     /// A line inserted to the new file
-    Insert(Cow<'a, T>),
+    Insert((&'a T, Option<LineEnd>)),
 }
 
-impl<T: ?Sized + ToOwned> Clone for Line<'_, T> {
-    fn clone(&self) -> Self {
-        match self {
-            Line::Context(cow) => Line::Context(cow.clone()),
-            Line::Delete(cow) => Line::Delete(cow.clone()),
-            Line::Insert(cow) => Line::Insert(cow.clone()),
-        }
-    }
-}
-
-impl<T> Debug for Line<'_, T>
-where
-    T: Debug + ToOwned<Owned: Debug> + ?Sized,
-{
+// We want to have strings in the output whenever possible.
+impl<T: ?Sized + Text> fmt::Debug for Line<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Line::Context(cow) => f.debug_tuple("Context").field(cow).finish(),
-            Line::Delete(cow) => f.debug_tuple("Delete").field(cow).finish(),
-            Line::Insert(cow) => f.debug_tuple("Insert").field(cow).finish(),
+        match *self {
+            Line::Context((line, ending)) => {
+                let mut l = line.as_bytes().to_owned();
+                let e: &[u8] = ending.map(|e| e.into()).unwrap_or(&[]);
+                l.extend(e);
+
+                if let Ok(s) = std::str::from_utf8(l.as_slice()) {
+                    f.debug_tuple("Context").field(&s).finish()
+                } else {
+                    f.debug_tuple("Context").field(&l).finish()
+                }
+            }
+            Line::Delete((line, ending)) => {
+                let mut l = line.as_bytes().to_owned();
+                let e: &[u8] = ending.map(|e| e.into()).unwrap_or(&[]);
+                l.extend(e);
+
+                if let Ok(s) = std::str::from_utf8(l.as_slice()) {
+                    f.debug_tuple("Delete").field(&s).finish()
+                } else {
+                    f.debug_tuple("Delete").field(&l).finish()
+                }
+            }
+            Line::Insert((line, ending)) => {
+                let mut l = line.as_bytes().to_owned();
+                let e: &[u8] = ending.map(|e| e.into()).unwrap_or(&[]);
+                l.extend(e);
+
+                if let Ok(s) = std::str::from_utf8(l.as_slice()) {
+                    f.debug_tuple("Insert").field(&s).finish()
+                } else {
+                    f.debug_tuple("Insert").field(&l).finish()
+                }
+            }
         }
     }
 }
 
-impl<T: ?Sized + ToOwned> Line<'_, T> {
+impl<T: ?Sized> Line<'_, T> {
     pub fn reverse(&self) -> Self {
+        match *self {
+            Line::Context(l) => Line::Context(l),
+            Line::Delete(l) => Line::Insert(l),
+            Line::Insert(l) => Line::Delete(l),
+        }
+    }
+
+    pub fn line_end(&self) -> Option<LineEnd> {
         match self {
-            Line::Context(s) => Line::Context(s.clone()),
-            Line::Delete(s) => Line::Insert(s.clone()),
-            Line::Insert(s) => Line::Delete(s.clone()),
+            Line::Context(l) => l.1,
+            Line::Delete(l) => l.1,
+            Line::Insert(l) => l.1,
         }
     }
 }

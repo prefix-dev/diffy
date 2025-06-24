@@ -191,13 +191,16 @@ impl<T: AsRef<[u8]> + ?Sized + ToOwned> HunkDisplay<'_, T> {
             write!(w, "{}", self.f.hunk_header.suffix())?;
         }
 
-        if let Some(ctx) = self.hunk.function_context {
+        if let Some((ctx, ending)) = self.hunk.function_context {
             write!(w, " ")?;
             if self.f.with_color {
                 write!(w, "{}", self.f.function_context.prefix())?;
             }
             write!(w, " ")?;
             w.write_all(ctx.as_ref())?;
+            if let Some(end) = ending {
+                w.write_all(end.into())?;
+            }
             if self.f.with_color {
                 write!(w, "{}", self.f.function_context.suffix())?;
             }
@@ -222,12 +225,16 @@ impl Display for HunkDisplay<'_, str> {
             write!(f, "{}", self.f.hunk_header.suffix())?;
         }
 
-        if let Some(ctx) = self.hunk.function_context {
+        if let Some((ctx, ending)) = self.hunk.function_context {
             write!(f, " ")?;
             if self.f.with_color {
                 write!(f, "{}", self.f.function_context.prefix())?;
             }
             write!(f, " {}", ctx)?;
+            if let Some(end) = ending {
+                let s: &str = end.into();
+                write!(f, "{}", s)?;
+            }
             if self.f.with_color {
                 write!(f, "{}", self.f.function_context.suffix())?;
             }
@@ -249,28 +256,40 @@ struct LineDisplay<'a, T: ?Sized + ToOwned> {
 
 impl<T: AsRef<[u8]> + ?Sized + ToOwned> LineDisplay<'_, T> {
     fn write_into<W: io::Write>(&self, mut w: W) -> io::Result<()> {
-        let (sign, line, style) = match self.line {
-            Line::Context(line) => (' ', line.as_ref(), self.f.context),
-            Line::Delete(line) => ('-', line.as_ref(), self.f.delete),
-            Line::Insert(line) => ('+', line.as_ref(), self.f.insert),
+        let (sign, (line, ending), style) = match self.line {
+            Line::Context(line) => (' ', line, self.f.context),
+            Line::Delete(line) => ('-', line, self.f.delete),
+            Line::Insert(line) => ('+', line, self.f.insert),
         };
 
         if self.f.with_color {
             write!(w, "{}", style.prefix())?;
         }
 
-        if self.f.suppress_blank_empty && sign == ' ' && line.as_ref() == b"\n" {
+        if self.f.suppress_blank_empty
+            && sign == ' '
+            && line.as_ref().is_empty()
+            && ending.is_some()
+        {
             w.write_all(line.as_ref())?;
+            if let Some(end) = *ending {
+                let e: &[u8] = end.into();
+                w.write_all(e)?;
+            }
         } else {
             write!(w, "{}", sign)?;
             w.write_all(line.as_ref())?;
+            if let Some(end) = *ending {
+                let e: &[u8] = end.into();
+                w.write_all(e)?;
+            }
         }
 
         if self.f.with_color {
             write!(w, "{}", style.suffix())?;
         }
 
-        if !line.as_ref().ends_with(b"\n") {
+        if ending.is_none() {
             writeln!(w)?;
             if self.f.with_missing_newline_message {
                 writeln!(w, "{}", NO_NEWLINE_AT_EOF)?;
@@ -283,7 +302,7 @@ impl<T: AsRef<[u8]> + ?Sized + ToOwned> LineDisplay<'_, T> {
 
 impl Display for LineDisplay<'_, str> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let (sign, line, style) = match self.line {
+        let (sign, (line, ending), style) = match self.line {
             Line::Context(line) => (' ', line, self.f.context),
             Line::Delete(line) => ('-', line, self.f.delete),
             Line::Insert(line) => ('+', line, self.f.insert),
@@ -293,17 +312,25 @@ impl Display for LineDisplay<'_, str> {
             write!(f, "{}", style.prefix())?;
         }
 
-        if self.f.suppress_blank_empty && sign == ' ' && *line == "\n" {
-            write!(f, "{}", line)?;
+        if self.f.suppress_blank_empty && sign == ' ' && line.is_empty() && ending.is_some() {
+            write!(f, "{}", dbg!(line))?;
+            if let Some(end) = *ending {
+                let e: &str = end.into();
+                write!(f, "{}", e)?;
+            }
         } else {
             write!(f, "{}{}", sign, line)?;
+            if let Some(end) = *ending {
+                let e: &str = end.into();
+                write!(f, "{}", e)?;
+            }
         }
 
         if self.f.with_color {
             write!(f, "{}", style.suffix())?;
         }
 
-        if !line.ends_with('\n') {
+        if ending.is_none() {
             writeln!(f)?;
             if self.f.with_missing_newline_message {
                 writeln!(f, "{}", NO_NEWLINE_AT_EOF)?;

@@ -1,18 +1,20 @@
 //! Common utilities
 
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     hash::Hash,
 };
+
+use crate::LineEnd;
 
 /// Classifies lines, converting lines into unique `u64`s for quicker comparison
 pub struct Classifier<'a, T: ?Sized> {
     next_id: u64,
-    unique_ids: HashMap<&'a T, u64>,
+    unique_ids: HashMap<(&'a T, Option<LineEnd>), u64>,
 }
 
 impl<'a, T: ?Sized + Eq + Hash> Classifier<'a, T> {
-    fn classify(&mut self, record: &'a T) -> u64 {
+    fn classify(&mut self, record: (&'a T, Option<LineEnd>)) -> u64 {
         match self.unique_ids.entry(record) {
             Entry::Occupied(o) => *o.get(),
             Entry::Vacant(v) => {
@@ -24,8 +26,8 @@ impl<'a, T: ?Sized + Eq + Hash> Classifier<'a, T> {
     }
 }
 
-impl<'a, T: ?Sized + Text> Classifier<'a, T> {
-    pub fn classify_lines(&mut self, text: &'a T) -> (Vec<&'a T>, Vec<u64>) {
+impl<'a, T: std::fmt::Debug + ?Sized + Text> Classifier<'a, T> {
+    pub fn classify_lines(&mut self, text: &'a T) -> (Vec<(&'a T, Option<LineEnd>)>, Vec<u64>) {
         LineIter::new(text)
             .map(|line| (line, self.classify(line)))
             .unzip()
@@ -51,22 +53,33 @@ impl<'a, T: ?Sized> LineIter<'a, T> {
 }
 
 impl<'a, T: Text + ?Sized> Iterator for LineIter<'a, T> {
-    type Item = &'a T;
+    type Item = (&'a T, Option<LineEnd>);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.0.is_empty() {
             return None;
         }
 
+        let mut line_ending = None;
+
         let end = if let Some(idx) = self.0.find("\n") {
+            line_ending = Some(LineEnd::Lf);
             idx + 1
         } else {
             self.0.len()
         };
 
-        let (line, remaining) = self.0.split_at(end);
+        let (mut line, remaining) = self.0.split_at(end);
+        if line_ending.is_some() {
+            line = self.0.split_at(end - 1).0;
+        }
+        if self.0.as_bytes().get(end.saturating_sub(2)) == Some(&b'\r') {
+            line_ending = Some(LineEnd::CrLf);
+            line = self.0.split_at(end - 2).0;
+        }
+
         self.0 = remaining;
-        Some(line)
+        Some((line, line_ending))
     }
 }
 

@@ -100,7 +100,7 @@
 //! image.
 //!
 //! ```
-//! use diffy::{apply, Patch};
+//! use diffy::{apply, Diff};
 //!
 //! let s = "\
 //! --- a/skybreaker-ideals
@@ -117,7 +117,7 @@
 //! +    until I find a more perfect Ideal.
 //! ";
 //!
-//! let patch = Patch::from_str(s).unwrap();
+//! let diff = Diff::from_str(s).unwrap();
 //!
 //! let base_image = "\
 //! First:
@@ -139,7 +139,7 @@
 //!     until I find a more perfect Ideal.
 //! ";
 //!
-//! assert_eq!(apply(base_image, &patch).unwrap(), expected);
+//! assert_eq!(apply(base_image, &diff).unwrap(), expected);
 //! ```
 //!
 //! ## Performing a Three-way Merge
@@ -228,13 +228,14 @@ mod range;
 mod utils;
 
 pub use apply::{
-    apply, apply_bytes, apply_bytes_with_config, apply_with_config, ApplyError, FuzzyConfig,
+    ApplyConfig, ApplyError, FuzzyConfig, LineEndHandling, apply, apply_bytes,
+    apply_bytes_with_config, apply_with_config,
 };
-pub use diff::{create_patch, create_patch_bytes, DiffOptions};
-pub use merge::{merge, merge_bytes, ConflictStyle, MergeOptions};
+pub use diff::{DiffOptions, create_patch, create_patch_bytes};
 pub use line_end::*;
+pub use merge::{ConflictStyle, MergeOptions, merge, merge_bytes};
 pub use patch::{
-    patch_from_bytes, patch_from_bytes_with_config, patch_from_str, patch_from_str_with_config,
     Diff, Hunk, HunkRange, HunkRangeStrategy, Line, ParsePatchError, ParserConfig, Patch,
-    PatchFormatter,
+    PatchFormatter, patch_from_bytes, patch_from_bytes_with_config, patch_from_str,
+    patch_from_str_with_config,
 };

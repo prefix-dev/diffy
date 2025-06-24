@@ -1,8 +1,6 @@
-use std::{borrow::Cow, fmt};
-
 use crate::utils::Text;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum LineEnd {
     /// Line Feed (LF) - Common on Unix, Linux, and macOS (`\n`).
     Lf,
@@ -10,26 +8,55 @@ pub enum LineEnd {
     CrLf,
 }
 
-impl fmt::Display for LineEnd {
-    #[allow(clippy::write_with_newline)]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            LineEnd::Lf => write!(f, "\n"),
-            LineEnd::CrLf => write!(f, "\r\n"),
+impl From<LineEnd> for &str {
+    fn from(value: LineEnd) -> Self {
+        match value {
+            LineEnd::Lf => "\n",
+            LineEnd::CrLf => "\r\n",
+        }
+    }
+}
+
+impl From<LineEnd> for &[u8] {
+    fn from(value: LineEnd) -> Self {
+        match value {
+            LineEnd::Lf => b"\n",
+            LineEnd::CrLf => b"\r\n",
         }
     }
 }
 
 impl LineEnd {
-    /// Strip only line ending from `line`.
+    /// Strip only line ending from `line`. Returns pair of stripped line and optionally stripped line ending.
     ///
     /// Assumes that if line has line ending, then it is last chars.
-    pub fn strip<'a, T: ?Sized + Text + ToOwned>(line: &'a Cow<'a, T>) -> Cow<'a, T> {
-        let line_without_lf = line.strip_suffix("\n");
-        let line_without_crlf = line_without_lf.and_then(|line| line.strip_suffix("\r"));
+    pub fn strip<T: ?Sized + Text + ToOwned>(line: &T) -> (&T, Option<LineEnd>) {
+        let mut line_ending = None;
+        let line_without_lf = line.strip_suffix("\n").inspect(|_| {
+            line_ending = Some(LineEnd::Lf);
+        });
+        let line_without_crlf = line_without_lf
+            .and_then(|line| line.strip_suffix("\r"))
+            .inspect(|_| {
+                line_ending = Some(LineEnd::CrLf);
+            });
         let stripped_line = line_without_crlf.or(line_without_lf);
 
-        Cow::Borrowed(stripped_line.unwrap_or(line))
+        (stripped_line.unwrap_or(line), line_ending)
+    }
+
+    /// Choose line ending based on the scores.
+    pub fn choose_from_scores(lf_score: usize, crlf_score: usize) -> LineEnd {
+        #[allow(clippy::if_same_then_else)]
+        if lf_score > crlf_score {
+            LineEnd::Lf
+        } else if lf_score < crlf_score {
+            LineEnd::CrLf
+        } else if cfg!(windows) {
+            LineEnd::CrLf
+        } else {
+            LineEnd::Lf
+        }
     }
 
     /// Returns most common line ending.
@@ -58,16 +85,7 @@ impl LineEnd {
             }
         }
 
-        #[allow(clippy::if_same_then_else)]
-        if lf_score > crlf_score {
-            LineEnd::Lf
-        } else if lf_score < crlf_score {
-            LineEnd::CrLf
-        } else if cfg!(windows) {
-            LineEnd::CrLf
-        } else {
-            LineEnd::Lf
-        }
+        LineEnd::choose_from_scores(lf_score, crlf_score)
     }
 }
 
@@ -87,9 +105,8 @@ mod tests {
     #[case("hello\n ")]
     #[case("hello\r\n ")]
     fn strip_no_line_ending(#[case] input: &str) {
-        let input = Cow::Borrowed(input);
-        let stripped = LineEnd::strip(&input);
-        assert_eq!(input, stripped);
+        let stripped = LineEnd::strip(input);
+        assert_eq!((input, None), stripped);
     }
 
     #[rstest]
@@ -100,10 +117,11 @@ mod tests {
     #[case("\r\nhello \n")]
     #[case("hello \r\n")]
     fn strip_line_ending(#[case] input: &str) {
-        let input = Cow::Borrowed(input);
-        let stripped = LineEnd::strip(&input);
+        let (stripped, line_ending) = LineEnd::strip(input);
         assert!(
-            input.len().saturating_sub(2) <= stripped.len() && stripped.len() < input.len(),
+            input.len().saturating_sub(2) <= stripped.len()
+                && stripped.len() < input.len()
+                && line_ending.is_some(),
             "Expected no newline at the end, but got: {:#?}\nOriginal line is: {:#?}",
             stripped,
             input
