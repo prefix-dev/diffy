@@ -313,7 +313,7 @@ impl Display for LineDisplay<'_, str> {
         }
 
         if self.f.suppress_blank_empty && sign == ' ' && line.is_empty() && ending.is_some() {
-            write!(f, "{}", dbg!(line))?;
+            write!(f, "{}", line)?;
             if let Some(end) = *ending {
                 let e: &str = end.into();
                 write!(f, "{}", e)?;
