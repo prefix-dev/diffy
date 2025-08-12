@@ -1,8 +1,8 @@
 use crate::{
-    LineEnd,
     diff::DiffOptions,
     range::{DiffRange, Range, SliceLike},
     utils::Classifier,
+    LineEnd,
 };
 use std::{cmp, fmt};
 

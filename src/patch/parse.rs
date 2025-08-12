@@ -386,7 +386,7 @@ fn hunk<'a, T: Text + ?Sized + ToOwned>(parser: &mut Parser<'a, T>) -> Result<Hu
     let n = *parser.peek().ok_or(ParsePatchError::UnexpectedEof)?;
     let (mut range1, mut range2, function_context) = hunk_header(n)?;
     let _ = parser.next();
-    let mut lines = hunk_lines(parser)?;
+    let mut lines = hunk_lines(parser, &range1, &range2)?;
 
     // check counts of lines to see if they match the ranges in the hunk header
     let (len1, len2) = super::hunk_lines_count(&lines);
@@ -471,36 +471,54 @@ fn range<T: Text + ?Sized>(s: &T) -> Result<HunkRange> {
 
 fn hunk_lines<'a, T: Text + ?Sized + ToOwned>(
     parser: &mut Parser<'a, T>,
+    old_range: &HunkRange,
+    new_range: &HunkRange,
 ) -> Result<Vec<Line<'a, T>>> {
     let mut lines: Vec<Line<'a, T>> = Vec::new();
     let mut no_newline_context = false;
     let mut no_newline_delete = false;
     let mut no_newline_insert = false;
 
+    // Track how many lines we've seen for each side
+    let mut old_lines_seen = 0;
+    let mut new_lines_seen = 0;
+
+    // Calculate maximum lines we should read based on ranges
+    let expected_old_lines = old_range.len;
+    let expected_new_lines = new_range.len;
+
     while let Some(line) = parser.peek() {
-        let line = if line.0.starts_with("@")
-            || line.0.starts_with("diff ")
-            || line.0.starts_with("-- ")
-            || (line.0.starts_with("--") && line.0.len() == 2)
-            || line.0.starts_with("--- ")
-            || line.0.starts_with("From ")
-        {
-            break;
-        } else if no_newline_context {
+        // Check if we've read enough lines based on the ranges,
+        // but continue to check for the "No newline at end of file" marker
+        if old_lines_seen >= expected_old_lines && new_lines_seen >= expected_new_lines {
+            // Check if the next line is the "No newline at end of file" marker
+            if !line.0.starts_with(NO_NEWLINE_AT_EOF) {
+                // We've read all the lines we expect for this hunk
+                break;
+            }
+        }
+
+        let line = if no_newline_context {
             return Err(ParsePatchError::ExpectedEndOfHunk);
         } else if let Some(l) = line.0.strip_prefix(" ") {
+            old_lines_seen += 1;
+            new_lines_seen += 1;
             Line::Context((l, line.1))
         } else if line.0.len() == 0 && line.1.is_some() {
+            old_lines_seen += 1;
+            new_lines_seen += 1;
             Line::Context(*line)
         } else if let Some(l) = line.0.strip_prefix("-") {
             if no_newline_delete {
                 return Err(ParsePatchError::UnexpectedDeletedLine);
             }
+            old_lines_seen += 1;
             Line::Delete((l, line.1))
         } else if let Some(l) = line.0.strip_prefix("+") {
             if no_newline_insert {
                 return Err(ParsePatchError::UnexpectedInsertLine);
             }
+            new_lines_seen += 1;
             Line::Insert((l, line.1))
         } else if line.0.starts_with(NO_NEWLINE_AT_EOF) {
             let last_line = lines
