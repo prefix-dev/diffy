@@ -429,7 +429,7 @@ fn hunk<'a, T: Text + ?Sized + ToOwned>(parser: &mut Parser<'a, T>) -> Result<Hu
 
 type HunkHeader<'a, T> = (HunkRange, HunkRange, Option<(&'a T, Option<LineEnd>)>);
 
-fn hunk_header<T: Text + ?Sized>(oinput: (&T, Option<LineEnd>)) -> Result<HunkHeader<T>> {
+fn hunk_header<T: Text + ?Sized>(oinput: (&T, Option<LineEnd>)) -> Result<HunkHeader<'_, T>> {
     let input = oinput
         .0
         .strip_prefix("@@ ")

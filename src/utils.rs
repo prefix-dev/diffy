@@ -99,7 +99,7 @@ pub trait Text: Eq + Hash {
     fn as_str(&self) -> Option<&str>;
     fn as_bytes(&self) -> &[u8];
     #[allow(unused)]
-    fn lines(&self) -> LineIter<Self>;
+    fn lines(&self) -> LineIter<'_, Self>;
 
     fn parse<T: std::str::FromStr>(&self) -> Option<T> {
         self.as_str().and_then(|s| s.parse().ok())
@@ -152,7 +152,7 @@ impl Text for str {
         self.as_bytes()
     }
 
-    fn lines(&self) -> LineIter<Self> {
+    fn lines(&self) -> LineIter<'_, Self> {
         LineIter::new(self)
     }
 }
@@ -202,7 +202,7 @@ impl Text for [u8] {
         self
     }
 
-    fn lines(&self) -> LineIter<Self> {
+    fn lines(&self) -> LineIter<'_, Self> {
         LineIter::new(self)
     }
 }
