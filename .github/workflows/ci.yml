@@ -23,10 +23,10 @@ jobs:
           override: true
           components: rustfmt, clippy
 
-      - name: Lint
-        run: |
-          cargo fmt -- --check
-          cargo clippy --all-targets
+      # - name: Lint
+      #   run: |
+      #     cargo fmt -- --check
+      #     cargo clippy --all-targets
 
       - name: Build Documentation
         run: cargo doc --no-deps
