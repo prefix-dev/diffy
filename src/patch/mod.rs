@@ -10,7 +10,7 @@ use std::{
     ops,
 };
 
-use crate::{LineEnd, utils::Text};
+use crate::{utils::Text, LineEnd};
 
 const NO_NEWLINE_AT_EOF: &str = "\\ No newline at end of file";
 
