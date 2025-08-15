@@ -9,6 +9,25 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets
+
   test:
     runs-on: ubuntu-latest
 
@@ -21,12 +40,6 @@ jobs:
         with:
           toolchain: stable
           override: true
-          components: rustfmt, clippy
-
-      # - name: Lint
-      #   run: |
-      #     cargo fmt -- --check
-      #     cargo clippy --all-targets
 
       - name: Build Documentation
         run: cargo doc --no-deps
