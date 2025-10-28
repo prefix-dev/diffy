@@ -8,12 +8,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/hello.txt",
+                    "hello.txt",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/hello.txt",
+                    "hello.txt",
                 ),
             ),
             hunks: [

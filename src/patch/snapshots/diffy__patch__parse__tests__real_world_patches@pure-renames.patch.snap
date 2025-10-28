@@ -8,12 +8,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/examples/benchmark_onnx.py",
+                    "examples/benchmark_onnx.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/examples/benchmark_onnx.py",
+                    "examples/benchmark_onnx.py",
                 ),
             ),
             hunks: [
@@ -56,12 +56,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/examples/compile_tensorflow.py",
+                    "examples/compile_tensorflow.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/examples/compile_tensorflow.py",
+                    "examples/compile_tensorflow.py",
                 ),
             ),
             hunks: [
@@ -107,12 +107,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/examples/openpilot/compile3.py",
+                    "examples/openpilot/compile3.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/examples/openpilot/compile3.py",
+                    "examples/openpilot/compile3.py",
                 ),
             ),
             hunks: [
@@ -158,12 +158,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/examples/openpilot/compile4.py",
+                    "examples/openpilot/compile4.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/examples/openpilot/compile4.py",
+                    "examples/openpilot/compile4.py",
                 ),
             ),
             hunks: [
@@ -209,12 +209,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/examples/other_mnist/beautiful_mnist_torch.py",
+                    "examples/other_mnist/beautiful_mnist_torch.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/examples/other_mnist/beautiful_mnist_torch.py",
+                    "examples/other_mnist/beautiful_mnist_torch.py",
                 ),
             ),
             hunks: [
@@ -262,12 +262,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/examples/yolov8-onnx.py",
+                    "examples/yolov8-onnx.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/examples/yolov8-onnx.py",
+                    "examples/yolov8-onnx.py",
                 ),
             ),
             hunks: [
@@ -313,12 +313,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/extra/huggingface_onnx/run_models.py",
+                    "extra/huggingface_onnx/run_models.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/extra/huggingface_onnx/run_models.py",
+                    "extra/huggingface_onnx/run_models.py",
                 ),
             ),
             hunks: [
@@ -361,12 +361,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/extra/onnx_helpers.py",
+                    "extra/onnx_helpers.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/extra/onnx_helpers.py",
+                    "extra/onnx_helpers.py",
                 ),
             ),
             hunks: [
@@ -406,12 +406,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/extra/torch_backend/test_inplace.py",
+                    "extra/torch_backend/test_inplace.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/extra/torch_backend/test_inplace.py",
+                    "extra/torch_backend/test_inplace.py",
                 ),
             ),
             hunks: [
@@ -451,12 +451,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/extra/torch_backend/test_multigpu.py",
+                    "extra/torch_backend/test_multigpu.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/extra/torch_backend/test_multigpu.py",
+                    "extra/torch_backend/test_multigpu.py",
                 ),
             ),
             hunks: [
@@ -499,12 +499,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/setup.py",
+                    "setup.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/setup.py",
+                    "setup.py",
                 ),
             ),
             hunks: [
@@ -547,12 +547,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/test/external/external_benchmark_openpilot.py",
+                    "test/external/external_benchmark_openpilot.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/test/external/external_benchmark_openpilot.py",
+                    "test/external/external_benchmark_openpilot.py",
                 ),
             ),
             hunks: [
@@ -595,12 +595,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/test/external/external_model_benchmark.py",
+                    "test/external/external_model_benchmark.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/test/external/external_model_benchmark.py",
+                    "test/external/external_model_benchmark.py",
                 ),
             ),
             hunks: [
@@ -646,12 +646,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/test/external/external_test_onnx_backend.py",
+                    "test/external/external_test_onnx_backend.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/test/external/external_test_onnx_backend.py",
+                    "test/external/external_test_onnx_backend.py",
                 ),
             ),
             hunks: [
@@ -697,12 +697,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/test/external/external_test_onnx_ops.py",
+                    "test/external/external_test_onnx_ops.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/test/external/external_test_onnx_ops.py",
+                    "test/external/external_test_onnx_ops.py",
                 ),
             ),
             hunks: [
@@ -748,12 +748,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/test/external/external_test_onnx_runner.py",
+                    "test/external/external_test_onnx_runner.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/test/external/external_test_onnx_runner.py",
+                    "test/external/external_test_onnx_runner.py",
                 ),
             ),
             hunks: [
@@ -799,12 +799,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/test/models/test_onnx.py",
+                    "test/models/test_onnx.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/test/models/test_onnx.py",
+                    "test/models/test_onnx.py",
                 ),
             ),
             hunks: [
@@ -847,12 +847,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/test/test_ops.py",
+                    "test/test_ops.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/test/test_ops.py",
+                    "test/test_ops.py",
                 ),
             ),
             hunks: [
@@ -898,12 +898,12 @@ Ok(
         Patch {
             original: Some(
                 Filename(
-                    "a/test/test_quantize_onnx.py",
+                    "test/test_quantize_onnx.py",
                 ),
             ),
             modified: Some(
                 Filename(
-                    "b/test/test_quantize_onnx.py",
+                    "test/test_quantize_onnx.py",
                 ),
             ),
             hunks: [
