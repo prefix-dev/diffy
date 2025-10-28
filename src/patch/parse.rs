@@ -1,10 +1,10 @@
 //! Parse a Patch
 
-use super::{Hunk, HunkRange, Line, ESCAPED_CHARS_BYTES, NO_NEWLINE_AT_EOF};
+use super::{ESCAPED_CHARS_BYTES, Hunk, HunkRange, Line, NO_NEWLINE_AT_EOF};
 use crate::{
+    LineEnd,
     patch::Diff,
     utils::{LineIter, Text},
-    LineEnd,
 };
 use std::{borrow::Cow, fmt};
 
@@ -233,7 +233,7 @@ fn patch_header<'a, T: Text + ToOwned + ?Sized>(
     Option<(Cow<'a, [u8]>, Option<LineEnd>)>,
     Option<(Cow<'a, [u8]>, Option<LineEnd>)>,
 )> {
-    let (git_original, git_modified) = skip_header_preamble(parser)?;
+    let (git_original, git_modified) = header_preamble(parser)?;
 
     let mut filename1 = None;
     let mut filename2 = None;
@@ -263,11 +263,12 @@ fn patch_header<'a, T: Text + ToOwned + ?Sized>(
     Ok((original, modified))
 }
 
-// Skip to the first filename header ("--- " or "+++ ") or hunk line,
-// skipping any preamble lines like "diff --git", git metadata, etc.
-// Also extracts filenames from git metadata if present (for pure renames/deletes/adds)
+// Parse the patch header preamble, extracting filenames from git metadata.
+// Skips preamble lines like "diff --git", git metadata, etc., until reaching
+// the first filename header ("--- " or "+++ ") or hunk line.
+// Returns extracted filenames from git metadata (for pure renames/deletes/adds).
 #[allow(clippy::type_complexity)]
-fn skip_header_preamble<'a, T: Text + ToOwned + ?Sized>(
+fn header_preamble<'a, T: Text + ToOwned + ?Sized>(
     parser: &mut Parser<'a, T>,
 ) -> Result<(
     Option<(Cow<'a, [u8]>, Option<LineEnd>)>,
@@ -294,24 +295,35 @@ fn skip_header_preamble<'a, T: Text + ToOwned + ?Sized>(
             seen_diff_git = true;
 
             if let Some(rest) = line.strip_prefix("diff --git ") {
-                // Parse "a/file1 b/file2"
-                if let Some((file1, file2)) = rest.split_at_exclusive(" b/") {
-                    if let Some(original) = file1.strip_prefix("a/") {
-                        git_original = Some((Cow::Borrowed(original.as_bytes()), *end));
-                    }
+                // Parse "a/file1 b/file2" (with prefixes) or "file1 file2" (without prefixes)
+                // Only strip a/ if we found b/ (standard format), otherwise use as-is (--no-prefix)
+                if rest.starts_with("a/")
+                    && let Some((file1, file2)) = rest.split_at_exclusive(" b/")
+                {
+                    // Found both a/ and b/ prefixes, so this is standard format: "a/file1 b/file2"
+                    // split_at_exclusive on " b/" gives us ("a/file1", "file2")
+                    // Strip a/ prefix since we confirmed this is standard format
+                    let original = file1.strip_prefix("a/").unwrap();
+                    git_original = Some((Cow::Borrowed(original.as_bytes()), *end));
+                    git_modified = Some((Cow::Borrowed(file2.as_bytes()), *end));
+                } else if let Some((file1, file2)) = rest.split_at_exclusive(" ") {
+                    // No a/ or b/ prefix found, this is --no-prefix format: "file1 file2"
+                    // Don't strip any prefixes, use filenames as-is
+                    git_original = Some((Cow::Borrowed(file1.as_bytes()), *end));
                     git_modified = Some((Cow::Borrowed(file2.as_bytes()), *end));
                 }
+                // If neither split works, skip this line (malformed diff --git line)
             }
         }
         // Parse rename from/to
-        else if line.starts_with("rename from ") {
-            if let Some(filename) = line.strip_prefix("rename from ") {
-                rename_from = Some((Cow::Borrowed(filename.as_bytes()), *end));
-            }
-        } else if line.starts_with("rename to ") {
-            if let Some(filename) = line.strip_prefix("rename to ") {
-                rename_to = Some((Cow::Borrowed(filename.as_bytes()), *end));
-            }
+        else if line.starts_with("rename from ")
+            && let Some(filename) = line.strip_prefix("rename from ")
+        {
+            rename_from = Some((Cow::Borrowed(filename.as_bytes()), *end));
+        } else if line.starts_with("rename to ")
+            && let Some(filename) = line.strip_prefix("rename to ")
+        {
+            rename_to = Some((Cow::Borrowed(filename.as_bytes()), *end));
         }
 
         parser.next()?;
@@ -619,8 +631,8 @@ fn hunk_lines<'a, T: Text + ?Sized + ToOwned>(
 
 #[cfg(test)]
 mod tests {
-    use crate::patch::parse::{parse_multiple_with_config, HunkRangeStrategy, ParserConfig};
     use crate::patch::Line;
+    use crate::patch::parse::{HunkRangeStrategy, ParserConfig, parse_multiple_with_config};
 
     use super::{parse, parse_bytes, parse_multiple};
 
@@ -896,6 +908,56 @@ similarity index 100%
 
         assert_eq!(result[0].original(), Some("file1.txt"));
         assert_eq!(result[0].modified(), Some("file2.txt"));
+        assert_eq!(result[0].hunks().len(), 0);
+    }
+
+    #[test]
+    fn test_git_diff_without_prefix() {
+        // Test git diff --no-prefix format (no a/ and b/ prefixes)
+        let patch = r#"diff --git old_file.txt new_file.txt
+similarity index 100%
+rename from old_file.txt
+rename to new_file.txt
+"#;
+
+        let result = parse_multiple(patch).unwrap();
+        assert_eq!(result.len(), 1, "Should parse one rename patch");
+
+        // Should prefer rename from/to over diff --git when both present
+        assert_eq!(result[0].original(), Some("old_file.txt"));
+        assert_eq!(result[0].modified(), Some("new_file.txt"));
+        assert_eq!(result[0].hunks().len(), 0);
+    }
+
+    #[test]
+    fn test_git_diff_no_prefix_without_rename_metadata() {
+        // Test git diff --no-prefix format without rename from/to metadata
+        let patch = r#"diff --git deleted_file.txt deleted_file.txt
+deleted file mode 100644
+"#;
+
+        let result = parse_multiple(patch).unwrap();
+        assert_eq!(result.len(), 1);
+
+        assert_eq!(result[0].original(), Some("deleted_file.txt"));
+        assert_eq!(result[0].modified(), Some("deleted_file.txt"));
+        assert_eq!(result[0].hunks().len(), 0);
+    }
+
+    #[test]
+    fn test_git_diff_no_prefix_with_a_in_filename() {
+        // Edge case: --no-prefix format with file literally named "a/something.txt"
+        // Should NOT strip the a/ since we didn't find b/ prefix
+        let patch = r#"diff --git a/file.txt a/file.txt
+deleted file mode 100644
+"#;
+
+        let result = parse_multiple(patch).unwrap();
+        assert_eq!(result.len(), 1);
+
+        // In --no-prefix mode, filename is literally "a/file.txt"
+        assert_eq!(result[0].original(), Some("a/file.txt"));
+        assert_eq!(result[0].modified(), Some("a/file.txt"));
         assert_eq!(result[0].hunks().len(), 0);
     }
 }
