@@ -145,6 +145,14 @@ pub fn parse_multiple_with_config(input: &str, config: ParserConfig) -> Result<V
                 patches.push(Diff::new(original, modified, hunks))
             }
             (Ok((None, None)), Err(_)) => break,
+            // Allow NoHunks error when we have valid headers (pure renames/deletes/adds)
+            (Ok(header), Err(ParsePatchError::NoHunks))
+                if header.0.is_some() || header.1.is_some() =>
+            {
+                let original = header.0.map(|(line, _end)| convert_cow_to_str(line));
+                let modified = header.1.map(|(line, _end)| convert_cow_to_str(line));
+                patches.push(Diff::new(original, modified, vec![]))
+            }
             (Ok(_), Err(e)) | (Err(e), _) => {
                 return Err(e);
             }
@@ -183,6 +191,14 @@ pub fn parse_bytes_multiple_with_config(
                 patches.push(Diff::new(original, modified, hunks))
             }
             (Ok((None, None)), Err(_)) | (Err(_), Err(_)) => break,
+            // Allow NoHunks error when we have valid headers (pure renames/deletes/adds)
+            (Ok(header), Err(ParsePatchError::NoHunks))
+                if header.0.is_some() || header.1.is_some() =>
+            {
+                let original = header.0.map(|(line, _end)| line);
+                let modified = header.1.map(|(line, _end)| line);
+                patches.push(Diff::new(original, modified, vec![]))
+            }
             (Ok(_), Err(e)) | (Err(e), Ok(_)) => {
                 return Err(e);
             }
@@ -217,7 +233,7 @@ fn patch_header<'a, T: Text + ToOwned + ?Sized>(
     Option<(Cow<'a, [u8]>, Option<LineEnd>)>,
     Option<(Cow<'a, [u8]>, Option<LineEnd>)>,
 )> {
-    skip_header_preamble(parser)?;
+    let (git_original, git_modified) = skip_header_preamble(parser)?;
 
     let mut filename1 = None;
     let mut filename2 = None;
@@ -240,20 +256,72 @@ fn patch_header<'a, T: Text + ToOwned + ?Sized>(
         }
     }
 
-    Ok((filename1, filename2))
+    // Use --- +++ headers if present, otherwise fall back to git metadata
+    let original = filename1.or(git_original);
+    let modified = filename2.or(git_modified);
+
+    Ok((original, modified))
 }
 
 // Skip to the first filename header ("--- " or "+++ ") or hunk line,
 // skipping any preamble lines like "diff --git", git metadata, etc.
-fn skip_header_preamble<T: Text + ?Sized>(parser: &mut Parser<'_, T>) -> Result<()> {
-    while let Some((line, _end)) = parser.peek() {
+// Also extracts filenames from git metadata if present (for pure renames/deletes/adds)
+#[allow(clippy::type_complexity)]
+fn skip_header_preamble<'a, T: Text + ToOwned + ?Sized>(
+    parser: &mut Parser<'a, T>,
+) -> Result<(
+    Option<(Cow<'a, [u8]>, Option<LineEnd>)>,
+    Option<(Cow<'a, [u8]>, Option<LineEnd>)>,
+)> {
+    let mut git_original = None;
+    let mut git_modified = None;
+    let mut rename_from = None;
+    let mut rename_to = None;
+    let mut seen_diff_git = false;
+
+    while let Some((line, end)) = parser.peek() {
         if line.starts_with("--- ") | line.starts_with("+++ ") | line.starts_with("@@ ") {
             break;
         }
+
+        // Parse git diff header: diff --git a/... b/...
+        if line.starts_with("diff --git ") {
+            // If we've already seen a diff --git line and have extracted data,
+            // this is the start of the next patch, so stop here
+            if seen_diff_git && (git_original.is_some() || rename_from.is_some()) {
+                break;
+            }
+            seen_diff_git = true;
+
+            if let Some(rest) = line.strip_prefix("diff --git ") {
+                // Parse "a/file1 b/file2"
+                if let Some((file1, file2)) = rest.split_at_exclusive(" b/") {
+                    if let Some(original) = file1.strip_prefix("a/") {
+                        git_original = Some((Cow::Borrowed(original.as_bytes()), *end));
+                    }
+                    git_modified = Some((Cow::Borrowed(file2.as_bytes()), *end));
+                }
+            }
+        }
+        // Parse rename from/to
+        else if line.starts_with("rename from ") {
+            if let Some(filename) = line.strip_prefix("rename from ") {
+                rename_from = Some((Cow::Borrowed(filename.as_bytes()), *end));
+            }
+        } else if line.starts_with("rename to ") {
+            if let Some(filename) = line.strip_prefix("rename to ") {
+                rename_to = Some((Cow::Borrowed(filename.as_bytes()), *end));
+            }
+        }
+
         parser.next()?;
     }
 
-    Ok(())
+    // Prefer rename from/to over git diff header
+    let original = rename_from.or(git_original);
+    let modified = rename_to.or(git_modified);
+
+    Ok((original, modified))
 }
 
 fn parse_filename<'a, T: Text + ToOwned + ?Sized>(
@@ -554,7 +622,7 @@ mod tests {
     use crate::patch::parse::{parse_multiple_with_config, HunkRangeStrategy, ParserConfig};
     use crate::patch::Line;
 
-    use super::{parse, parse_bytes};
+    use super::{parse, parse_bytes, parse_multiple};
 
     #[test]
     fn test_escaped_filenames() {
@@ -759,5 +827,75 @@ mod tests {
             Line::Insert((content, _)) => assert_eq!(*content, "From: new@example.com"),
             _ => panic!("Expected insert line with 'From: new@example.com'"),
         }
+    }
+
+    #[test]
+    fn test_pure_renames() {
+        // Test parsing patches with pure renames (no hunks, only git metadata)
+        let patch = r#"diff --git a/old_file.txt b/new_file.txt
+similarity index 100%
+rename from old_file.txt
+rename to new_file.txt
+diff --git a/another_old.txt b/another_new.txt
+similarity index 100%
+rename from another_old.txt
+rename to another_new.txt
+"#;
+
+        let result = parse_multiple(patch).unwrap();
+        assert_eq!(result.len(), 2, "Should parse two rename patches");
+
+        // First rename
+        assert_eq!(result[0].original(), Some("old_file.txt"));
+        assert_eq!(result[0].modified(), Some("new_file.txt"));
+        assert_eq!(
+            result[0].hunks().len(),
+            0,
+            "Pure rename should have no hunks"
+        );
+
+        // Second rename
+        assert_eq!(result[1].original(), Some("another_old.txt"));
+        assert_eq!(result[1].modified(), Some("another_new.txt"));
+        assert_eq!(
+            result[1].hunks().len(),
+            0,
+            "Pure rename should have no hunks"
+        );
+    }
+
+    #[test]
+    fn test_deleted_file() {
+        // Test parsing patches with deleted files
+        let patch = r#"diff --git a/deleted_file.txt b/deleted_file.txt
+deleted file mode 100644
+index e69de29bb2d1d..0000000000000
+"#;
+
+        let result = parse_multiple(patch).unwrap();
+        assert_eq!(result.len(), 1, "Should parse one delete patch");
+
+        assert_eq!(result[0].original(), Some("deleted_file.txt"));
+        assert_eq!(result[0].modified(), Some("deleted_file.txt"));
+        assert_eq!(
+            result[0].hunks().len(),
+            0,
+            "Deleted file should have no hunks"
+        );
+    }
+
+    #[test]
+    fn test_git_diff_without_rename_metadata() {
+        // Test that we can extract filenames from diff --git line even without rename from/to
+        let patch = r#"diff --git a/file1.txt b/file2.txt
+similarity index 100%
+"#;
+
+        let result = parse_multiple(patch).unwrap();
+        assert_eq!(result.len(), 1);
+
+        assert_eq!(result[0].original(), Some("file1.txt"));
+        assert_eq!(result[0].modified(), Some("file2.txt"));
+        assert_eq!(result[0].hunks().len(), 0);
     }
 }
