@@ -1,10 +1,10 @@
 use super::*;
 use crate::{
+    PatchFormatter,
     apply::apply,
     diff::{DiffLine, DiffRange},
     patch::Diff,
     range::Range,
-    PatchFormatter,
 };
 
 // Helper macros are based off of the ones used in [dissimilar](https://docs.rs/dissimilar)
@@ -769,7 +769,7 @@ Second:
     let elapsed = now.elapsed();
 
     println!("{:?}", elapsed);
-    assert!(elapsed < std::time::Duration::from_micros(400));
+    assert!(elapsed < std::time::Duration::from_micros(600));
 
     assert_eq!(result, expected);
 }

@@ -9,8 +9,8 @@ repository = "https://github.com/bmwill/diffy"
 readme = "README.md"
 keywords = ["diff", "patch", "merge"]
 categories = ["text-processing"]
-rust-version = "1.80.0"
-edition = "2021"
+rust-version = "1.89.0"
+edition = "2024"
 
 [dependencies]
 nu-ansi-term = "0.50"
@@ -19,4 +19,4 @@ thiserror = "2.0.12"
 
 [dev-dependencies]
 insta = { version = "1.43.1", features = ["glob"] }
-rstest = "0.25.0"
+rstest = "0.26.1"
