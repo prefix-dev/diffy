@@ -378,12 +378,16 @@ fn parse_filename<'a, T: Text + ToOwned + ?Sized>(
     };
 
     // Strip a/ or b/ prefix only if we saw a git header (git format uses these prefixes)
-    if saw_git_header
-        && let Cow::Borrowed(bytes) = parsed_filename
-    {
-        if let Some(rest) = std::str::from_utf8(bytes).ok().and_then(|s| s.strip_prefix("a/")) {
+    if saw_git_header && let Cow::Borrowed(bytes) = parsed_filename {
+        if let Some(rest) = std::str::from_utf8(bytes)
+            .ok()
+            .and_then(|s| s.strip_prefix("a/"))
+        {
             parsed_filename = Cow::Borrowed(rest.as_bytes());
-        } else if let Some(rest) = std::str::from_utf8(bytes).ok().and_then(|s| s.strip_prefix("b/")) {
+        } else if let Some(rest) = std::str::from_utf8(bytes)
+            .ok()
+            .and_then(|s| s.strip_prefix("b/"))
+        {
             parsed_filename = Cow::Borrowed(rest.as_bytes());
         }
     }
