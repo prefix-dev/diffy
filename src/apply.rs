@@ -26,6 +26,17 @@ impl fmt::Display for ApplyError {
 
 impl std::error::Error for ApplyError {}
 
+/// Statistics for a single hunk application
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct HunkStats {
+    /// Number of lines added in this hunk
+    added: usize,
+    /// Number of lines deleted in this hunk
+    deleted: usize,
+    /// Number of context lines in this hunk
+    context: usize,
+}
+
 /// Statistics about the changes made when applying a patch
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ApplyStats {
@@ -37,8 +48,6 @@ pub struct ApplyStats {
     pub lines_context: usize,
     /// Number of hunks successfully applied
     pub hunks_applied: usize,
-    /// Whether any changes were made (false if patch was already applied)
-    pub has_changes: bool,
 }
 
 impl ApplyStats {
@@ -49,35 +58,114 @@ impl ApplyStats {
             lines_deleted: 0,
             lines_context: 0,
             hunks_applied: 0,
-            has_changes: false,
         }
     }
 
     /// Add statistics from a hunk
-    fn add_hunk(&mut self, added: usize, deleted: usize, context: usize) {
-        self.lines_added += added;
-        self.lines_deleted += deleted;
-        self.lines_context += context;
+    fn add_hunk(&mut self, hunk_stats: HunkStats) {
+        self.lines_added += hunk_stats.added;
+        self.lines_deleted += hunk_stats.deleted;
+        self.lines_context += hunk_stats.context;
         self.hunks_applied += 1;
-        if added > 0 || deleted > 0 {
-            self.has_changes = true;
-        }
+    }
+
+    /// Returns whether any changes were made (false if patch was already applied)
+    pub fn has_changes(&self) -> bool {
+        self.lines_added > 0 || self.lines_deleted > 0
     }
 }
 
 /// Result of applying a patch with statistics
+///
+/// Similar to `Result<T, E>` but includes statistics about the patch application
+/// even on success.
 #[derive(Clone, Debug)]
-pub struct ApplyResult<T> {
-    /// The patched content
-    pub content: T,
-    /// Statistics about the changes made
-    pub stats: ApplyStats,
+pub enum ApplyResult<T, E> {
+    /// Patch was successfully applied
+    Ok {
+        /// The patched content
+        content: T,
+        /// Statistics about the changes made
+        stats: ApplyStats,
+    },
+    /// Patch application failed
+    Err(E),
 }
 
-impl<T> ApplyResult<T> {
-    /// Create a new result with content and statistics
-    fn new(content: T, stats: ApplyStats) -> Self {
-        Self { content, stats }
+impl<T, E> ApplyResult<T, E> {
+    /// Returns `true` if the result is `Ok`.
+    pub fn is_ok(&self) -> bool {
+        matches!(self, ApplyResult::Ok { .. })
+    }
+
+    /// Returns `true` if the result is `Err`.
+    pub fn is_err(&self) -> bool {
+        matches!(self, ApplyResult::Err(_))
+    }
+
+    /// Converts from `ApplyResult<T, E>` to `Option<(T, ApplyStats)>`.
+    pub fn ok(self) -> Option<(T, ApplyStats)> {
+        match self {
+            ApplyResult::Ok { content, stats } => Some((content, stats)),
+            ApplyResult::Err(_) => None,
+        }
+    }
+
+    /// Converts from `ApplyResult<T, E>` to `Option<E>`.
+    pub fn err(self) -> Option<E> {
+        match self {
+            ApplyResult::Ok { .. } => None,
+            ApplyResult::Err(e) => Some(e),
+        }
+    }
+
+    /// Returns the contained `Ok` content and stats, consuming the `self` value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the value is an `Err`, with a panic message including the
+    /// passed message, and the content of the `Err`.
+    pub fn expect(self, msg: &str) -> (T, ApplyStats)
+    where
+        E: std::fmt::Debug,
+    {
+        match self {
+            ApplyResult::Ok { content, stats } => (content, stats),
+            ApplyResult::Err(e) => panic!("{}: {:?}", msg, e),
+        }
+    }
+
+    /// Returns the contained `Ok` content and stats, consuming the `self` value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the value is an `Err`, with a panic message provided by the
+    /// `Err`'s value.
+    pub fn unwrap(self) -> (T, ApplyStats)
+    where
+        E: std::fmt::Debug,
+    {
+        match self {
+            ApplyResult::Ok { content, stats } => (content, stats),
+            ApplyResult::Err(e) => {
+                panic!("called `ApplyResult::unwrap()` on an `Err` value: {:?}", e)
+            }
+        }
+    }
+
+    /// Maps an `ApplyResult<T, E>` to `ApplyResult<U, E>` by applying a function to the
+    /// contained `Ok` content, leaving the stats and any `Err` value untouched.
+    pub fn map<U, F>(self, f: F) -> ApplyResult<U, E>
+    where
+        F: FnOnce(T) -> U,
+    {
+        match self {
+            ApplyResult::Ok { content, stats } => ApplyResult::Ok {
+                content: f(content),
+                stats,
+            },
+            ApplyResult::Err(e) => ApplyResult::Err(e),
+        }
     }
 }
 
@@ -279,7 +367,7 @@ where
 }
 
 /// Apply a `Diff` to a base image with default fuzzy matching
-pub fn apply(base_image: &str, diff: &Diff<'_, str>) -> Result<ApplyResult<String>, ApplyError> {
+pub fn apply(base_image: &str, diff: &Diff<'_, str>) -> ApplyResult<String, ApplyError> {
     apply_with_config(base_image, diff, &ApplyConfig::default())
 }
 
@@ -288,7 +376,7 @@ pub fn apply_with_config(
     base_image: &str,
     diff: &Diff<'_, str>,
     config: &ApplyConfig,
-) -> Result<ApplyResult<String>, ApplyError> {
+) -> ApplyResult<String, ApplyError> {
     let mut image: Vec<_> = LineIter::new(base_image)
         .map(ImageLine::Unpatched)
         .collect();
@@ -296,9 +384,11 @@ pub fn apply_with_config(
     let mut stats = ApplyStats::new();
 
     for (i, hunk) in diff.hunks().iter().enumerate() {
-        let (added, deleted, context) = apply_hunk_with_config(&mut image, hunk, config)
-            .map_err(|_| ApplyError(i + 1, format!("{:#?}", hunk)))?;
-        stats.add_hunk(added, deleted, context);
+        let hunk_stats = match apply_hunk_with_config(&mut image, hunk, config) {
+            Ok(stats) => stats,
+            Err(_) => return ApplyResult::Err(ApplyError(i + 1, format!("{:#?}", hunk))),
+        };
+        stats.add_hunk(hunk_stats);
     }
 
     // TODO: Keep line ending as is like it was before.
@@ -335,14 +425,11 @@ pub fn apply_with_config(
         })
         .collect();
 
-    Ok(ApplyResult::new(content, stats))
+    ApplyResult::Ok { content, stats }
 }
 
 /// Apply a non-utf8 `Diff` to a base image with default fuzzy matching
-pub fn apply_bytes(
-    base_image: &[u8],
-    patch: &Diff<'_, [u8]>,
-) -> Result<ApplyResult<Vec<u8>>, ApplyError> {
+pub fn apply_bytes(base_image: &[u8], patch: &Diff<'_, [u8]>) -> ApplyResult<Vec<u8>, ApplyError> {
     apply_bytes_with_config(base_image, patch, &ApplyConfig::default())
 }
 
@@ -351,7 +438,7 @@ pub fn apply_bytes_with_config(
     base_image: &[u8],
     diff: &Diff<'_, [u8]>,
     config: &ApplyConfig,
-) -> Result<ApplyResult<Vec<u8>>, ApplyError> {
+) -> ApplyResult<Vec<u8>, ApplyError> {
     let mut image: Vec<_> = LineIter::new(base_image)
         .map(ImageLine::Unpatched)
         .collect();
@@ -359,9 +446,11 @@ pub fn apply_bytes_with_config(
     let mut stats = ApplyStats::new();
 
     for (i, hunk) in diff.hunks().iter().enumerate() {
-        let (added, deleted, context) = apply_hunk_with_config(&mut image, hunk, config)
-            .map_err(|_| ApplyError(i + 1, format!("{:#?}", hunk)))?;
-        stats.add_hunk(added, deleted, context);
+        let hunk_stats = match apply_hunk_with_config(&mut image, hunk, config) {
+            Ok(stats) => stats,
+            Err(_) => return ApplyResult::Err(ApplyError(i + 1, format!("{:#?}", hunk))),
+        };
+        stats.add_hunk(hunk_stats);
     }
 
     // TODO: Keep line ending as is like it was before.
@@ -398,14 +487,14 @@ pub fn apply_bytes_with_config(
         })
         .collect();
 
-    Ok(ApplyResult::new(content, stats))
+    ApplyResult::Ok { content, stats }
 }
 
 fn apply_hunk_with_config<'a, T>(
     image: &mut Vec<ImageLine<'a, T>>,
     hunk: &Hunk<'a, T>,
     config: &ApplyConfig,
-) -> Result<(usize, usize, usize), ()>
+) -> Result<HunkStats, ()>
 where
     T: PartialEq + FuzzyComparable + ?Sized + Text + ToOwned,
 {
@@ -437,7 +526,11 @@ where
         apply_hunk_preserving_context(image, hunk, pos);
     }
 
-    Ok((added, deleted, context))
+    Ok(HunkStats {
+        added,
+        deleted,
+        context,
+    })
 }
 
 /// Apply hunk while preserving original context lines (for fuzzy matching)
@@ -807,9 +900,9 @@ mod test {
         let patch = crate::Diff::from_bytes(patch.as_bytes()).unwrap();
 
         println!("Applied: {:#?}", patch);
-        let result = crate::apply_bytes(base_image.as_bytes(), &patch).unwrap();
+        let (content, _stats) = crate::apply_bytes(base_image.as_bytes(), &patch).unwrap();
         // take the first 50 lines for snapshot testing
-        let result = String::from_utf8(result.content)
+        let result = String::from_utf8(content)
             .unwrap()
             .lines()
             .take(50)
@@ -821,8 +914,8 @@ mod test {
 
     fn assert_patch(old: &str, new: &str, patch: &str) {
         let diff = Diff::from_str(patch).unwrap();
-        let result = apply(old, &diff).unwrap();
-        assert_eq!(new, result.content);
+        let (content, _stats) = apply(old, &diff).unwrap();
+        assert_eq!(new, content);
     }
 
     #[test]
@@ -841,14 +934,14 @@ mod test {
 +line 4
 ";
         let diff = Diff::from_str(patch).unwrap();
-        let result = apply(old, &diff).unwrap();
+        let (content, stats) = apply(old, &diff).unwrap();
 
-        assert_eq!(result.content, new);
-        assert_eq!(result.stats.lines_added, 2);
-        assert_eq!(result.stats.lines_deleted, 2);
-        assert_eq!(result.stats.lines_context, 1);
-        assert_eq!(result.stats.hunks_applied, 1);
-        assert!(result.stats.has_changes);
+        assert_eq!(content, new);
+        assert_eq!(stats.lines_added, 2);
+        assert_eq!(stats.lines_deleted, 2);
+        assert_eq!(stats.lines_context, 1);
+        assert_eq!(stats.hunks_applied, 1);
+        assert!(stats.has_changes());
     }
 
     #[test]
@@ -864,14 +957,14 @@ mod test {
  line 2
 ";
         let diff = Diff::from_str(patch).unwrap();
-        let result = apply(old, &diff).unwrap();
+        let (content, stats) = apply(old, &diff).unwrap();
 
-        assert_eq!(result.content, new);
-        assert_eq!(result.stats.lines_added, 0);
-        assert_eq!(result.stats.lines_deleted, 0);
-        assert_eq!(result.stats.lines_context, 2);
-        assert_eq!(result.stats.hunks_applied, 1);
-        assert!(!result.stats.has_changes); // No changes made
+        assert_eq!(content, new);
+        assert_eq!(stats.lines_added, 0);
+        assert_eq!(stats.lines_deleted, 0);
+        assert_eq!(stats.lines_context, 2);
+        assert_eq!(stats.hunks_applied, 1);
+        assert!(!stats.has_changes()); // No changes made
     }
 
     #[test]
@@ -892,14 +985,14 @@ mod test {
  line 5
 ";
         let diff = Diff::from_str(patch).unwrap();
-        let result = apply(old, &diff).unwrap();
+        let (content, stats) = apply(old, &diff).unwrap();
 
-        assert_eq!(result.content, new);
-        assert_eq!(result.stats.lines_added, 2);
-        assert_eq!(result.stats.lines_deleted, 2);
-        assert_eq!(result.stats.lines_context, 2);
-        assert_eq!(result.stats.hunks_applied, 2);
-        assert!(result.stats.has_changes);
+        assert_eq!(content, new);
+        assert_eq!(stats.lines_added, 2);
+        assert_eq!(stats.lines_deleted, 2);
+        assert_eq!(stats.lines_context, 2);
+        assert_eq!(stats.hunks_applied, 2);
+        assert!(stats.has_changes());
     }
 
     #[test]

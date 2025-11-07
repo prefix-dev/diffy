@@ -139,7 +139,8 @@
 //!     until I find a more perfect Ideal.
 //! ";
 //!
-//! assert_eq!(apply(base_image, &diff).unwrap().content, expected);
+//! let (content, _stats) = apply(base_image, &diff).unwrap();
+//! assert_eq!(content, expected);
 //! ```
 //!
 //! ## Performing a Three-way Merge

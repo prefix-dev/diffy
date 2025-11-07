@@ -341,13 +341,10 @@ macro_rules! assert_patch {
         assert_eq!(Diff::from_str(&patch_str).unwrap(), patch);
         assert_eq!(Diff::from_bytes($expected.as_bytes()).unwrap(), bpatch);
         assert_eq!(Diff::from_bytes(&patch_bytes).unwrap(), bpatch);
-        assert_eq!(apply($old, &patch).unwrap().content, $new);
-        assert_eq!(
-            crate::apply_bytes($old.as_bytes(), &bpatch)
-                .unwrap()
-                .content,
-            $new.as_bytes()
-        );
+        let (content, _stats) = apply($old, &patch).unwrap();
+        assert_eq!(content, $new);
+        let (bytes_content, _stats) = crate::apply_bytes($old.as_bytes(), &bpatch).unwrap();
+        assert_eq!(bytes_content, $new.as_bytes());
     };
     ($old:ident, $new:ident, $expected:ident $(,)?) => {
         assert_patch!(DiffOptions::default(), $old, $new, $expected);
@@ -547,11 +544,10 @@ fn without_no_newline_at_eof_message() {
     assert_eq!(patch_str, expected);
     assert_eq!(patch_bytes, patch_str.as_bytes());
     assert_eq!(patch_bytes, expected.as_bytes());
-    assert_eq!(apply(old, &patch).unwrap().content, new);
-    assert_eq!(
-        crate::apply_bytes(old.as_bytes(), &bpatch).unwrap().content,
-        new.as_bytes()
-    );
+    let (content, _stats) = apply(old, &patch).unwrap();
+    assert_eq!(content, new);
+    let (bytes_content, _stats) = crate::apply_bytes(old.as_bytes(), &bpatch).unwrap();
+    assert_eq!(bytes_content, new.as_bytes());
 }
 
 #[test]
@@ -617,7 +613,8 @@ void Chunk_copy(Chunk *src, size_t src_start, Chunk *dst, size_t dst_start, size
  }
 ";
     let git_patch = Diff::from_str(expected_git).unwrap();
-    assert_eq!(apply(original, &git_patch).unwrap().content, a);
+    let (content, _stats) = apply(original, &git_patch).unwrap();
+    assert_eq!(content, a);
 
     let expected_diffy = "\
 --- original
@@ -688,13 +685,10 @@ fn suppress_blank_empty() {
     assert_eq!(patch_str, expected);
     assert_eq!(patch_bytes, patch_str.as_bytes());
     assert_eq!(patch_bytes, expected.as_bytes());
-    assert_eq!(apply(original, &patch).unwrap().content, modified);
-    assert_eq!(
-        crate::apply_bytes(original.as_bytes(), &bpatch)
-            .unwrap()
-            .content,
-        modified.as_bytes()
-    );
+    let (content, _stats) = apply(original, &patch).unwrap();
+    assert_eq!(content, modified);
+    let (bytes_content, _stats) = crate::apply_bytes(original.as_bytes(), &bpatch).unwrap();
+    assert_eq!(bytes_content, modified.as_bytes());
 
     // Note that there is no space " " on the line after 3
     let expected_suppressed = "\
@@ -718,13 +712,10 @@ fn suppress_blank_empty() {
     assert_eq!(patch_str, expected_suppressed);
     assert_eq!(patch_bytes, patch_str.as_bytes());
     assert_eq!(patch_bytes, expected_suppressed.as_bytes());
-    assert_eq!(apply(original, &patch).unwrap().content, modified);
-    assert_eq!(
-        crate::apply_bytes(original.as_bytes(), &bpatch)
-            .unwrap()
-            .content,
-        modified.as_bytes()
-    );
+    let (content2, _stats) = apply(original, &patch).unwrap();
+    assert_eq!(content2, modified);
+    let (bytes_content2, _stats) = crate::apply_bytes(original.as_bytes(), &bpatch).unwrap();
+    assert_eq!(bytes_content2, modified.as_bytes());
 }
 
 // In the event that a patch has an invalid hunk range we want to ensure that when apply is
@@ -770,14 +761,14 @@ Second:
 
     let now = std::time::Instant::now();
 
-    let result = apply(original, &patch).unwrap();
+    let (content, _stats) = apply(original, &patch).unwrap();
 
     let elapsed = now.elapsed();
 
     println!("{:?}", elapsed);
     assert!(elapsed < std::time::Duration::from_micros(600));
 
-    assert_eq!(result.content, expected);
+    assert_eq!(content, expected);
 }
 
 #[test]
@@ -798,8 +789,9 @@ fn reverse_empty_file() {
         }
     }
 
-    let re_reverse = apply(&apply("", &p).unwrap().content, &reverse).unwrap();
-    assert_eq!(re_reverse.content, "");
+    let (first_content, _stats) = apply("", &p).unwrap();
+    let (re_reverse_content, _stats) = apply(&first_content, &reverse).unwrap();
+    assert_eq!(re_reverse_content, "");
 }
 
 #[test]
@@ -818,6 +810,7 @@ Kupluh, Indeed
     let p = create_patch(original, modified);
     let reverse = p.reverse();
 
-    let re_reverse = apply(&apply(original, &p).unwrap().content, &reverse).unwrap();
-    assert_eq!(re_reverse.content, original);
+    let (first_content, _stats) = apply(original, &p).unwrap();
+    let (re_reverse_content, _stats) = apply(&first_content, &reverse).unwrap();
+    assert_eq!(re_reverse_content, original);
 }
