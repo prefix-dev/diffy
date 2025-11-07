@@ -869,7 +869,6 @@ mod test {
 
     #[test]
     fn test_apply_result_no_changes() {
-        // Test with only context lines (no actual changes)
         let old = "line 1\nline 2\n";
         let new = "line 1\nline 2\n";
         let patch = "\
