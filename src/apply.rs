@@ -890,7 +890,6 @@ mod test {
 
     #[test]
     fn test_apply_result_multiple_hunks() {
-        // Test with multiple hunks
         let old = "line 1\nline 2\nline 3\nline 4\nline 5\n";
         let new = "line 1\nline 2 modified\nline 3\nline 4 modified\nline 5\n";
         let patch = "\
