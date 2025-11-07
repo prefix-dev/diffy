@@ -917,7 +917,6 @@ mod test {
 
     #[test]
     fn test_detect_already_applied_patch() {
-        // Test that applying a patch twice fails on the second attempt
         let old = "line 1\nline 2\nline 3\n";
         let patch = "\
 --- original
