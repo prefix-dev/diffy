@@ -339,7 +339,10 @@ pub fn apply_with_config(
 }
 
 /// Apply a non-utf8 `Diff` to a base image with default fuzzy matching
-pub fn apply_bytes(base_image: &[u8], patch: &Diff<'_, [u8]>) -> Result<ApplyResult<Vec<u8>>, ApplyError> {
+pub fn apply_bytes(
+    base_image: &[u8],
+    patch: &Diff<'_, [u8]>,
+) -> Result<ApplyResult<Vec<u8>>, ApplyError> {
     apply_bytes_with_config(base_image, patch, &ApplyConfig::default())
 }
 

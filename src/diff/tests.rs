@@ -343,7 +343,9 @@ macro_rules! assert_patch {
         assert_eq!(Diff::from_bytes(&patch_bytes).unwrap(), bpatch);
         assert_eq!(apply($old, &patch).unwrap().content, $new);
         assert_eq!(
-            crate::apply_bytes($old.as_bytes(), &bpatch).unwrap().content,
+            crate::apply_bytes($old.as_bytes(), &bpatch)
+                .unwrap()
+                .content,
             $new.as_bytes()
         );
     };
@@ -688,7 +690,9 @@ fn suppress_blank_empty() {
     assert_eq!(patch_bytes, expected.as_bytes());
     assert_eq!(apply(original, &patch).unwrap().content, modified);
     assert_eq!(
-        crate::apply_bytes(original.as_bytes(), &bpatch).unwrap().content,
+        crate::apply_bytes(original.as_bytes(), &bpatch)
+            .unwrap()
+            .content,
         modified.as_bytes()
     );
 
@@ -716,7 +720,9 @@ fn suppress_blank_empty() {
     assert_eq!(patch_bytes, expected_suppressed.as_bytes());
     assert_eq!(apply(original, &patch).unwrap().content, modified);
     assert_eq!(
-        crate::apply_bytes(original.as_bytes(), &bpatch).unwrap().content,
+        crate::apply_bytes(original.as_bytes(), &bpatch)
+            .unwrap()
+            .content,
         modified.as_bytes()
     );
 }
