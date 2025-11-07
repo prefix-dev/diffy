@@ -885,7 +885,7 @@ mod test {
         assert_eq!(stats.lines_deleted, 0);
         assert_eq!(stats.lines_context, 2);
         assert_eq!(stats.hunks_applied, 1);
-        assert!(!stats.has_changes()); // No changes made
+        assert!(!stats.has_changes());
     }
 
     #[test]
