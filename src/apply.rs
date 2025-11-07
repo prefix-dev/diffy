@@ -843,7 +843,6 @@ mod test {
 
     #[test]
     fn test_apply_result_statistics() {
-        // Test with additions and deletions
         let old = "line 1\nline 2\nline 3\n";
         let new = "line 1\nline 2 modified\nline 4\n";
         let patch = "\
