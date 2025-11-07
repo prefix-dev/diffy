@@ -77,9 +77,6 @@ impl ApplyStats {
 
 /// Result of applying a patch with statistics
 ///
-/// Similar to `nom`'s `IResult`, this is a type alias for `Result<(T, ApplyStats), E>`
-/// where the success case includes both the patched content and statistics about the changes.
-///
 /// # Examples
 ///
 /// ```
