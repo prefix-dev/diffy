@@ -77,97 +77,23 @@ impl ApplyStats {
 
 /// Result of applying a patch with statistics
 ///
-/// Similar to `Result<T, E>` but includes statistics about the patch application
-/// even on success.
-#[derive(Clone, Debug)]
-pub enum ApplyResult<T, E> {
-    /// Patch was successfully applied
-    Ok {
-        /// The patched content
-        content: T,
-        /// Statistics about the changes made
-        stats: ApplyStats,
-    },
-    /// Patch application failed
-    Err(E),
-}
-
-impl<T, E> ApplyResult<T, E> {
-    /// Returns `true` if the result is `Ok`.
-    pub fn is_ok(&self) -> bool {
-        matches!(self, ApplyResult::Ok { .. })
-    }
-
-    /// Returns `true` if the result is `Err`.
-    pub fn is_err(&self) -> bool {
-        matches!(self, ApplyResult::Err(_))
-    }
-
-    /// Converts from `ApplyResult<T, E>` to `Option<(T, ApplyStats)>`.
-    pub fn ok(self) -> Option<(T, ApplyStats)> {
-        match self {
-            ApplyResult::Ok { content, stats } => Some((content, stats)),
-            ApplyResult::Err(_) => None,
-        }
-    }
-
-    /// Converts from `ApplyResult<T, E>` to `Option<E>`.
-    pub fn err(self) -> Option<E> {
-        match self {
-            ApplyResult::Ok { .. } => None,
-            ApplyResult::Err(e) => Some(e),
-        }
-    }
-
-    /// Returns the contained `Ok` content and stats, consuming the `self` value.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the value is an `Err`, with a panic message including the
-    /// passed message, and the content of the `Err`.
-    pub fn expect(self, msg: &str) -> (T, ApplyStats)
-    where
-        E: std::fmt::Debug,
-    {
-        match self {
-            ApplyResult::Ok { content, stats } => (content, stats),
-            ApplyResult::Err(e) => panic!("{}: {:?}", msg, e),
-        }
-    }
-
-    /// Returns the contained `Ok` content and stats, consuming the `self` value.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the value is an `Err`, with a panic message provided by the
-    /// `Err`'s value.
-    pub fn unwrap(self) -> (T, ApplyStats)
-    where
-        E: std::fmt::Debug,
-    {
-        match self {
-            ApplyResult::Ok { content, stats } => (content, stats),
-            ApplyResult::Err(e) => {
-                panic!("called `ApplyResult::unwrap()` on an `Err` value: {:?}", e)
-            }
-        }
-    }
-
-    /// Maps an `ApplyResult<T, E>` to `ApplyResult<U, E>` by applying a function to the
-    /// contained `Ok` content, leaving the stats and any `Err` value untouched.
-    pub fn map<U, F>(self, f: F) -> ApplyResult<U, E>
-    where
-        F: FnOnce(T) -> U,
-    {
-        match self {
-            ApplyResult::Ok { content, stats } => ApplyResult::Ok {
-                content: f(content),
-                stats,
-            },
-            ApplyResult::Err(e) => ApplyResult::Err(e),
-        }
-    }
-}
+/// Similar to `nom`'s `IResult`, this is a type alias for `Result<(T, ApplyStats), E>`
+/// where the success case includes both the patched content and statistics about the changes.
+///
+/// # Examples
+///
+/// ```
+/// use diffy::{apply, Diff};
+///
+/// let base = "line 1\nline 2\n";
+/// let patch_str = "--- a\n+++ b\n@@ -1,2 +1,2 @@\n line 1\n-line 2\n+line 2 modified\n";
+/// let diff = Diff::from_str(patch_str).unwrap();
+///
+/// let (content, stats) = apply(base, &diff).unwrap();
+/// assert_eq!(content, "line 1\nline 2 modified\n");
+/// assert!(stats.has_changes());
+/// ```
+pub type ApplyResult<T, E = ApplyError> = Result<(T, ApplyStats), E>;
 
 /// Configuration for patch application
 #[derive(Default, Debug, Clone)]
@@ -386,7 +312,7 @@ pub fn apply_with_config(
     for (i, hunk) in diff.hunks().iter().enumerate() {
         let hunk_stats = match apply_hunk_with_config(&mut image, hunk, config) {
             Ok(stats) => stats,
-            Err(_) => return ApplyResult::Err(ApplyError(i + 1, format!("{:#?}", hunk))),
+            Err(_) => return Err(ApplyError(i + 1, format!("{:#?}", hunk))),
         };
         stats.add_hunk(hunk_stats);
     }
@@ -425,7 +351,7 @@ pub fn apply_with_config(
         })
         .collect();
 
-    ApplyResult::Ok { content, stats }
+    Ok((content, stats))
 }
 
 /// Apply a non-utf8 `Diff` to a base image with default fuzzy matching
@@ -448,7 +374,7 @@ pub fn apply_bytes_with_config(
     for (i, hunk) in diff.hunks().iter().enumerate() {
         let hunk_stats = match apply_hunk_with_config(&mut image, hunk, config) {
             Ok(stats) => stats,
-            Err(_) => return ApplyResult::Err(ApplyError(i + 1, format!("{:#?}", hunk))),
+            Err(_) => return Err(ApplyError(i + 1, format!("{:#?}", hunk))),
         };
         stats.add_hunk(hunk_stats);
     }
@@ -487,7 +413,7 @@ pub fn apply_bytes_with_config(
         })
         .collect();
 
-    ApplyResult::Ok { content, stats }
+    Ok((content, stats))
 }
 
 fn apply_hunk_with_config<'a, T>(
@@ -993,6 +919,33 @@ mod test {
         assert_eq!(stats.lines_context, 2);
         assert_eq!(stats.hunks_applied, 2);
         assert!(stats.has_changes());
+    }
+
+    #[test]
+    fn test_detect_already_applied_patch() {
+        // Test that applying a patch twice fails on the second attempt
+        let old = "line 1\nline 2\nline 3\n";
+        let patch = "\
+--- original
++++ modified
+@@ -1,3 +1,3 @@
+ line 1
+-line 2
++line 2 modified
+ line 3
+";
+        let diff = Diff::from_str(patch).unwrap();
+
+        // First application should succeed with changes
+        let (content, stats) = apply(old, &diff).unwrap();
+        assert_eq!(content, "line 1\nline 2 modified\nline 3\n");
+        assert!(stats.has_changes());
+        assert_eq!(stats.lines_added, 1);
+        assert_eq!(stats.lines_deleted, 1);
+
+        // Second application should fail because the patch expects "line 2" but finds "line 2 modified"
+        let result = apply(&content, &diff);
+        assert!(result.is_err(), "Applying the same patch twice should fail");
     }
 
     #[test]
