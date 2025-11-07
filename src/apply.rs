@@ -69,7 +69,7 @@ impl ApplyStats {
         self.hunks_applied += 1;
     }
 
-    /// Returns whether any changes were made (false if patch was already applied)
+    /// Returns whether any changes were made
     pub fn has_changes(&self) -> bool {
         self.lines_added > 0 || self.lines_deleted > 0
     }
