@@ -341,9 +341,9 @@ macro_rules! assert_patch {
         assert_eq!(Diff::from_str(&patch_str).unwrap(), patch);
         assert_eq!(Diff::from_bytes($expected.as_bytes()).unwrap(), bpatch);
         assert_eq!(Diff::from_bytes(&patch_bytes).unwrap(), bpatch);
-        assert_eq!(apply($old, &patch).unwrap(), $new);
+        assert_eq!(apply($old, &patch).unwrap().content, $new);
         assert_eq!(
-            crate::apply_bytes($old.as_bytes(), &bpatch).unwrap(),
+            crate::apply_bytes($old.as_bytes(), &bpatch).unwrap().content,
             $new.as_bytes()
         );
     };
@@ -545,9 +545,9 @@ fn without_no_newline_at_eof_message() {
     assert_eq!(patch_str, expected);
     assert_eq!(patch_bytes, patch_str.as_bytes());
     assert_eq!(patch_bytes, expected.as_bytes());
-    assert_eq!(apply(old, &patch).unwrap(), new);
+    assert_eq!(apply(old, &patch).unwrap().content, new);
     assert_eq!(
-        crate::apply_bytes(old.as_bytes(), &bpatch).unwrap(),
+        crate::apply_bytes(old.as_bytes(), &bpatch).unwrap().content,
         new.as_bytes()
     );
 }
@@ -615,7 +615,7 @@ void Chunk_copy(Chunk *src, size_t src_start, Chunk *dst, size_t dst_start, size
  }
 ";
     let git_patch = Diff::from_str(expected_git).unwrap();
-    assert_eq!(apply(original, &git_patch).unwrap(), a);
+    assert_eq!(apply(original, &git_patch).unwrap().content, a);
 
     let expected_diffy = "\
 --- original
@@ -686,9 +686,9 @@ fn suppress_blank_empty() {
     assert_eq!(patch_str, expected);
     assert_eq!(patch_bytes, patch_str.as_bytes());
     assert_eq!(patch_bytes, expected.as_bytes());
-    assert_eq!(apply(original, &patch).unwrap(), modified);
+    assert_eq!(apply(original, &patch).unwrap().content, modified);
     assert_eq!(
-        crate::apply_bytes(original.as_bytes(), &bpatch).unwrap(),
+        crate::apply_bytes(original.as_bytes(), &bpatch).unwrap().content,
         modified.as_bytes()
     );
 
@@ -714,9 +714,9 @@ fn suppress_blank_empty() {
     assert_eq!(patch_str, expected_suppressed);
     assert_eq!(patch_bytes, patch_str.as_bytes());
     assert_eq!(patch_bytes, expected_suppressed.as_bytes());
-    assert_eq!(apply(original, &patch).unwrap(), modified);
+    assert_eq!(apply(original, &patch).unwrap().content, modified);
     assert_eq!(
-        crate::apply_bytes(original.as_bytes(), &bpatch).unwrap(),
+        crate::apply_bytes(original.as_bytes(), &bpatch).unwrap().content,
         modified.as_bytes()
     );
 }
@@ -771,7 +771,7 @@ Second:
     println!("{:?}", elapsed);
     assert!(elapsed < std::time::Duration::from_micros(600));
 
-    assert_eq!(result, expected);
+    assert_eq!(result.content, expected);
 }
 
 #[test]
@@ -792,8 +792,8 @@ fn reverse_empty_file() {
         }
     }
 
-    let re_reverse = apply(&apply("", &p).unwrap(), &reverse).unwrap();
-    assert_eq!(re_reverse, "");
+    let re_reverse = apply(&apply("", &p).unwrap().content, &reverse).unwrap();
+    assert_eq!(re_reverse.content, "");
 }
 
 #[test]
@@ -812,6 +812,6 @@ Kupluh, Indeed
     let p = create_patch(original, modified);
     let reverse = p.reverse();
 
-    let re_reverse = apply(&apply(original, &p).unwrap(), &reverse).unwrap();
-    assert_eq!(re_reverse, original);
+    let re_reverse = apply(&apply(original, &p).unwrap().content, &reverse).unwrap();
+    assert_eq!(re_reverse.content, original);
 }

@@ -139,7 +139,7 @@
 //!     until I find a more perfect Ideal.
 //! ";
 //!
-//! assert_eq!(apply(base_image, &diff).unwrap(), expected);
+//! assert_eq!(apply(base_image, &diff).unwrap().content, expected);
 //! ```
 //!
 //! ## Performing a Three-way Merge
@@ -228,8 +228,8 @@ mod range;
 mod utils;
 
 pub use apply::{
-    ApplyConfig, ApplyError, FuzzyConfig, LineEndHandling, apply, apply_bytes,
-    apply_bytes_with_config, apply_with_config,
+    ApplyConfig, ApplyError, ApplyResult, ApplyStats, FuzzyConfig, LineEndHandling, apply,
+    apply_bytes, apply_bytes_with_config, apply_with_config,
 };
 pub use diff::{DiffOptions, create_patch, create_patch_bytes};
 pub use line_end::*;
