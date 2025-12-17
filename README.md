@@ -1,4 +1,6 @@
-# diffy
+# diffy (republished as `flickzeug`)
+
+**This fork is archived and re-published under `flickzeug`: https://github.com/prefix-dev/flickzeug.**
 
 [![diffy on crates.io](https://img.shields.io/crates/v/diffy)](https://crates.io/crates/diffy)
 [![Documentation (latest release)](https://docs.rs/diffy/badge.svg)](https://docs.rs/diffy/)
